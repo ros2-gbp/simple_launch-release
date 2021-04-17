@@ -17,6 +17,8 @@ import sys
 def regular_path_elem(path):
     return path is None or type(path) == str
 
+
+
 class SimpleLauncher:
     def __init__(self, namespace = ''):
         '''
@@ -37,6 +39,13 @@ class SimpleLauncher:
             name,
             default_value=str(default_value),
             description=description))
+        
+    def declare_gazebo_axes(self):
+        '''
+        Declares classical Gazebo axes as launch arguments
+        '''        
+        for axis in ('x','y','z','roll','pitch','yaw'):
+            self.declare_arg(axis, default_value=0.)
 
     def arg(self, name):
         '''
@@ -45,8 +54,7 @@ class SimpleLauncher:
         if type(name) != str:
             return name
         return LaunchConfiguration(name)
-        
-    
+            
     def arg_map(self, names, to_update={}):
         '''
         Retrieves several arguments as a dict
@@ -63,18 +71,11 @@ class SimpleLauncher:
         return LaunchDescription(self.entities[0])
     
     @staticmethod
-    def flatten(l):
+    def flatten(nested):
         '''
         Take a list with possibly sub-(sub-(...))-lists elements and make it to a 1-dim list
         '''
-        ret = []
-        for elem in l:
-            if type(elem) == list:
-                for sub in SimpleLauncher.flatten(elem):
-                    ret.append(sub)
-            else:
-                ret.append(elem)
-        return ret                
+        return sum([SimpleLauncher.flatten(elem) if type(elem)==list else [elem] for elem in nested],[])        
     
     @staticmethod
     def py_eval(*elems):
@@ -84,15 +85,27 @@ class SimpleLauncher:
         return PythonExpression(elems)
     
     @staticmethod
-    def name_join(*elems):
-        return SimpleLauncher.flatten([type(elem) == str and TextSubstitution(text=elem) or elem for elem in elems if elem is not None])
+    def py_eval_str(*elems):
+        '''
+        Evaluates the Python expression as a string
+        '''
+        return SimpleLauncher.name_join("'",PythonExpression(elems),"'")
     
     @staticmethod
-    def path_join(*pathes):        
-        ret = SimpleLauncher.name_join(pathes[0])
-        for p in pathes[1:]:
-            ret.append(TextSubstitution(text=sep))
-            ret.append(p)
+    def name_join(*elems):
+        return SimpleLauncher.flatten([TextSubstitution(text=elem) if type(elem)==str else elem for elem in elems if elem is not None])
+    
+    def gazebo_axes_args(self):
+        '''
+        Generate arguments corresponding to Gazebo spawner
+        '''
+        axes={'x': 'x', 'y': 'y', 'z': 'z', 'roll': 'R', 'pitch': 'P', 'yaw': 'Y'}
+        return [['-'+tag, self.arg(axis)] for axis,tag in axes.items()]    
+    
+    @staticmethod
+    def path_join(*pathes):
+        ret = [TextSubstitution(text=sep)]*(2*len(pathes)-1)
+        ret[::2] = pathes
         return SimpleLauncher.flatten(ret)
      
     @staticmethod
@@ -211,23 +224,26 @@ class SimpleLauncher:
         Add a node to the launch tree.
         
         * package -- name of the package
-        * executable (classical node) -- name of the node within the package
+        * executable (classical node) -- name of the node within the package, if None then assumes the node has the name of the package
         * plugin (inside a composition group) -- name of the composed node plugin within the package
         * node_args -- any other args passed to the node constructor
         ''' 
         if executable is None and not self.composed:
-            raise Exception('Indicate the executable name when adding a classical node')
+            executable = package
         if plugin is None and self.composed:
             raise Exception('Indicate the plugin name when adding a composable node')
         
-        if 'arguments' in node_args and type(node_args['arguments']) != list:
-            if type(node_args['arguments']) == str:
-                node_args['arguments'] = node_args['arguments'].split()
-            else:
-                node_args['arguments'] = [node_args['arguments']]
-        if 'parameters' in node_args and type(node_args['parameters']) == dict:
-            node_args['parameters'] =  [node_args['parameters']]
-            
+        if 'arguments' in node_args:
+            args = SimpleLauncher.flatten([node_args['arguments']])
+            for i,arg in enumerate(args):
+                if type(arg)==str:
+                    args[i] = [TextSubstitution(text=kw) for kw in arg.split() if kw]
+            node_args['arguments'] = SimpleLauncher.flatten(args)
+        if 'parameters' in node_args:
+            if type(node_args['parameters']) == dict:
+                node_args['parameters'] =  [node_args['parameters']]
+            elif type(node_args['parameters']) == list and all(type(elem)==dict for elem in node_args['parameters']):
+                node_args['parameters']=[dict(kv for d in node_args['parameters'] for kv in d.iteritems())]
         if not self.composed:
             self.entity(Node(package=package, executable=executable, **node_args))
         else:
@@ -268,15 +284,10 @@ class SimpleLauncher:
             else:
                 # args as a dict
                 for key, val in xacro_args.items():
-                    cmd.append(' ')
-                    cmd.append(key)
-                    cmd.append(':=')
-                    if type(val) == list:
-                        for v in val:
-                            cmd.append(v)
-                    else:
-                        cmd.append(val)
-        return Command(SimpleLauncher.name_join(*cmd))
+                    cmd += [' ', key]
+                    if val is not None:
+                        cmd += self.flatten([':=',val])
+        return self.name_join("'",Command(SimpleLauncher.name_join(*cmd)),"'")
         
     def robot_state_publisher(self, package=None, description_file=None, description_dir=None, xacro_args=None, **node_args):
         '''
@@ -299,7 +310,7 @@ class SimpleLauncher:
             node_args['parameters'] = {'robot_description': urdf_xml}
             
         # Launch the robot state publisher with the desired URDF
-        self.node("robot_state_publisher", "robot_state_publisher", **node_args)
+        self.node("robot_state_publisher", **node_args)
         
     def joint_state_publisher(self, use_gui = True, **node_args):
         '''
@@ -309,9 +320,6 @@ class SimpleLauncher:
         if type(use_gui) == bool:
             use_gui = str(use_gui)
             
-        pkg_exec = 'joint_state_publisher'
-        self.node(pkg_exec, pkg_exec, parameters = node_args, condition=UnlessCondition(use_gui))
-
-        pkg_exec = 'joint_state_publisher_gui'
-        self.node(pkg_exec, pkg_exec, parameters = node_args, condition=IfCondition(use_gui))
+        self.node('joint_state_publisher', parameters = node_args, condition=UnlessCondition(use_gui))
+        self.node('joint_state_publisher_gui', parameters = node_args, condition=IfCondition(use_gui))
         
