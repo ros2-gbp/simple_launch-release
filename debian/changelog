@@ -1,0 +1,58 @@
+ros-foxy-simple-launch (1.1.0-1focal) focal; urgency=high
+
+  * add capacity to prefix and namespace Gazebo-published messages, as an alternative to using Gazebo namespaces that also remap /tf
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Fri, 24 Sep 2021 22:00:00 -0000
+
+ros-foxy-simple-launch (1.0.6-1focal) focal; urgency=high
+
+  * node arguments is a raw list and accepts substitutions
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Tue, 21 Sep 2021 22:00:00 -0000
+
+ros-foxy-simple-launch (1.0.5-1focal) focal; urgency=high
+
+  * automagically convert to expected type for node parameters, remappings, launch arguments
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Tue, 21 Sep 2021 22:00:00 -0000
+
+ros-foxy-simple-launch (1.0.4-1focal) focal; urgency=high
+
+  * some Python2 legacy bugs
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Thu, 02 Sep 2021 22:00:00 -0000
+
+ros-foxy-simple-launch (1.0.3-1focal) focal; urgency=high
+
+  * solve typo in node_args
+  * better handling of node arguments in nested lists
+  * bug fixes around Substitutions
+  * Merge pull request #1 <https://github.com/oKermorgant/simple_launch/issues/1> from oKermorgant/master
+    deduce executable from package name if needed
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Fri, 16 Apr 2021 22:00:00 -0000
+
+ros-foxy-simple-launch (1.0.2-1focal) focal; urgency=high
+
+  * composition with existing container
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Mon, 07 Dec 2020 23:00:00 -0000
+
+ros-foxy-simple-launch (1.0.1-1focal) focal; urgency=high
+
+  * PythonExpression shortcut
+  * xacro args now take substitution args
+  * add LoadComposableNode feature for existing containers
+  * add name_join and path_join to combine raw str and Substitution stuff
+  * first commit
+  * Contributors: Olivier Kermorgant
+
+ -- Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>  Sun, 11 Oct 2020 22:00:00 -0000
+
+
