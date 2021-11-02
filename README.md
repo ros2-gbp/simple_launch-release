@@ -1,3 +1,26 @@
+## simple_launch (foxy) - 1.2.0-1
+
+The packages in the `simple_launch` repository were released into the `foxy` distro by running `/usr/bin/bloom-release --ros-distro foxy --track foxy simple_launch` on `Tue, 02 Nov 2021 10:26:33 -0000`
+
+The `simple_launch` package was released.
+
+Version of package(s) in repository `simple_launch`:
+
+- upstream repository: https://github.com/oKermorgant/simple_launch.git
+- release repository: https://github.com/oKermorgant/simple_launch-release.git
+- rosdistro version: `1.1.0-1`
+- old version: `1.1.0-1`
+- new version: `1.2.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.10.7`
+- catkin_pkg version: `0.4.23`
+- rosdep version: `0.21.0`
+- rosdistro version: `0.8.3`
+- vcstools version: `0.1.42`
+
+
 ## simple_launch (foxy) - 1.1.0-1
 
 The packages in the `simple_launch` repository were released into the `foxy` distro by running `/usr/bin/bloom-release --ros-distro foxy --track foxy simple_launch` on `Sat, 25 Sep 2021 13:29:06 -0000`
