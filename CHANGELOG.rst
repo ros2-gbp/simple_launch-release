@@ -2,6 +2,25 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.1 (2022-05-02)
+------------------
+* use underscores in setup.cfg
+* typo in included_launch example
+* Merge pull request `#4 <https://github.com/oKermorgant/simple_launch/issues/4>`_ from yushijinhun/patch-1
+  Add package & executable parameter to container
+* [readme] add doc for container.package
+* Add package & executable param to container
+  This allows the user to use a component container implementation
+  other than `component_container`, such as `component_container_isolated`
+  and `component_container_mt`.
+* Contributors: Haowei Wen, Olivier Kermorgant
+
+1.3.0 (2022-02-03)
+------------------
+* more use_sim_time: constructor + warning on 'auto'
+* auto_sim_time can be forced instead of checking /clock
+* Contributors: Olivier Kermorgant
+
 1.2.1 (2022-01-24)
 ------------------
 * add Ignition support
