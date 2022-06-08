@@ -2,6 +2,17 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.1 (2022-06-01)
+------------------
+* more handling of param types
+* Contributors: Olivier Kermorgant
+
+1.4.0 (2022-06-01)
+------------------
+* use Gazebo instead of Ignition
+* better type comprehension
+* Contributors: Olivier Kermorgant
+
 1.3.1 (2022-05-02)
 ------------------
 * use underscores in setup.cfg
