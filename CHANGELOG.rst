@@ -2,6 +2,39 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.5.0 (2022-08-26)
+------------------
+* allow spawning a Gz model from file
+* parameters are list of dict
+* allow substitution for topics in ros_ign_image bridge
+* Gazebo bridge handles invalid ROS topics through yaml config file. Image bridges are automatically run through ros_ign_image
+* better handling of gazebo spawn pose
+* Contributors: Olivier Kermorgant
+
+1.4.1 (2022-06-01)
+------------------
+* more handling of param types
+* Contributors: Olivier Kermorgant
+
+1.4.0 (2022-06-01)
+------------------
+* use Gazebo instead of Ignition
+* better type comprehension
+* Contributors: Olivier Kermorgant
+
+1.3.1 (2022-05-02)
+------------------
+* use underscores in setup.cfg
+* typo in included_launch example
+* Merge pull request `#4 <https://github.com/oKermorgant/simple_launch/issues/4>`_ from yushijinhun/patch-1
+  Add package & executable parameter to container
+* [readme] add doc for container.package
+* Add package & executable param to container
+  This allows the user to use a component container implementation
+  other than `component_container`, such as `component_container_isolated`
+  and `component_container_mt`.
+* Contributors: Haowei Wen, Olivier Kermorgant
+
 1.3.0 (2022-02-03)
 ------------------
 * more use_sim_time: constructor + warning on 'auto'
