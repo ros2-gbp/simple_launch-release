@@ -2,6 +2,11 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.6.2 (2023-01-23)
+------------------
+* add .rviz shortcut, clean Python scripts
+* Contributors: Olivier Kermorgant
+
 1.6.1 (2022-10-10)
 ------------------
 * fix bug in robot_state_publisher with raw URDF
