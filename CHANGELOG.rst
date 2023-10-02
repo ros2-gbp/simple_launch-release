@@ -2,6 +2,24 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.7.2 (2023-10-02)
+------------------
+* simplify logic of try_perform
+* Merge pull request `#5 <https://github.com/oKermorgant/simple_launch/issues/5>`_ from okvik/devel
+  Fix string-valued launch argument substitution
+* slight refactor to prepare wrapping Delays
+* Contributors: Olivier Kermorgant, Viktor Pocedulic
+
+* slight refactor to prepare wrapping Delays
+* Contributors: Olivier Kermorgant
+
+1.7.1 (2023-05-16)
+------------------
+* list[] -> List[] for type hints in 20.04
+* detail on __ns for services
+* add service call at launch
+* Contributors: Olivier Kermorgant
+
 1.7.0 (2023-02-22)
 ------------------
 * GazeboBridge creates a camera_info topic for all bridged image topics
