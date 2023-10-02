@@ -10,11 +10,17 @@ from launch_ros.descriptions import ComposableNode
 from contextlib import contextmanager
 from .simple_substitution import SimpleSubstitution, flatten
 from .gazebo import only_show_args, silent_exec, GazeboBridge
-from typing import Text
+from typing import Text, List
 
 NODE_REMAPS = LAUNCH_ARGS = 1
 NODE_PARAMS = 2
 XACRO_ARGS = 3
+
+
+def stringify(arg):
+    if isinstance(arg, (str, Substitution, list)):
+        return arg
+    return str(arg)
 
 
 def adapt_type(params, target):
@@ -22,12 +28,6 @@ def adapt_type(params, target):
     # NODE_PARAMS expects a list with 1 or several dict
     # NODE_REMAPS and LAUNCH_ARGS expect a list of (key,value) tuples
     # XACRO_ARGS expect a single string of key:=value
-
-    def stringify(arg):
-        if isinstance(arg, (str, Substitution, list)):
-            return arg
-        return str(arg)
-
     if type(params) == dict:
         if target == NODE_PARAMS:
             return [params]
@@ -67,6 +67,7 @@ class SimpleLauncher:
         If use_sim_time is True or False, creates a `use_sim_time` launch argument with this value as the default and forwards it to all nodes
         If use_sim_time is 'auto', then SimpleLauncher will set it to True if the /clock topic is advertized (case of an already running simulation)
         '''
+        # entity graph, the only ones that is run is at index 0
         self.entities = [[]]
         self.index = 0
         self.ns_graph = {0: -1}
@@ -207,11 +208,13 @@ class SimpleLauncher:
         from ast import literal_eval
         performed = substitution.perform(self.__context)
         try:
-            return literal_eval(substitution.perform(self.__context))
+            return literal_eval(performed)
         except ValueError:
             if performed.lower() in ('true', 'false'):
                 return literal_eval(performed.title())
-            return performed
+        except SyntaxError:
+            pass
+        return performed
 
     def py_eval(self, *elems):
         '''
@@ -227,7 +230,8 @@ class SimpleLauncher:
         Generate arguments corresponding to Gazebo spawner
         '''
         axes = {'x': 'x', 'y': 'y', 'z': 'z', 'roll': 'R', 'pitch': 'P', 'yaw': 'Y'}
-        return [['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes]
+        args = flatten([['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes])
+        return [stringify(arg) for arg in args]
 
     def path_join(self, *pathes):
         ret = SimpleSubstitution()
@@ -277,9 +281,9 @@ class SimpleLauncher:
         raise Exception(f'Could not find file {file_name} in package {package}')
 
     def group_level_down(self):
+        self.ns_graph[len(self.entities)] = self.index
+        self.index = len(self.entities)
         self.entities.append([])
-        self.ns_graph[len(self.entities)-1] = self.index
-        self.index = len(self.entities)-1
 
     def group_level_up(self):
         new_entities = self.entities[self.index]
@@ -362,6 +366,7 @@ class SimpleLauncher:
         Directly adds a user-created Entity (Node, ComposableNodes, etc.)
         '''
         self.entities[self.index].append(entity)
+        return entity
 
     def node(self, package, executable = None, plugin = None, **node_args):
         '''
@@ -399,22 +404,34 @@ class SimpleLauncher:
             else:
                 node_args['parameters'] = [{'use_sim_time': self.sim_time}]
 
-        if not self.composed:
-            self.entity(Node(package=package, executable=executable, **node_args))
-        else:
+        if self.composed:
             # check plugin name - add package if needed
             if '::' not in plugin:
                 plugin = '{}::{}'.format(package, plugin)
-            self.entity(ComposableNode(package=package, plugin=plugin, **node_args))
+            return self.entity(ComposableNode(package=package, plugin=plugin, **node_args))
+
+        # basic node
+        return self.entity(Node(package=package, executable=executable, **node_args))
 
     def include(self, package=None, launch_file=None, launch_dir=None, launch_arguments=None):
         '''
         Include another launch file
         '''
         launch_file = self.find(package, launch_file, launch_dir)
-        self.entity(IncludeLaunchDescription(
+        return self.entity(IncludeLaunchDescription(
             AnyLaunchDescriptionSource(launch_file),
             launch_arguments=adapt_type(launch_arguments, LAUNCH_ARGS)))
+
+    def service(self, server, request = None):
+        '''
+        Wrapper around service call.
+        Calls the service at server address after checking its type.
+        Request is a dictionary that is forwarded to service request fields, assuming they match
+        '''
+        if request is not None:
+            self.node('simple_launch', 'service_wrapper', parameters = [{'server':server}, request])
+        else:
+            self.node('simple_launch', 'service_wrapper', parameters = [{'server':server}])
 
     def rviz(self, config_file = None, warnings = False):
         '''
@@ -447,8 +464,6 @@ class SimpleLauncher:
                               namespaced_tf = False, **node_args):
         '''
         Add a robot state publisher node to the launch tree using the given description (urdf / xacro) file.
-
-        If the file ends with 'xacro', or any path element is defined from an Argument, or xacro_args are passed, runs xacro on this file.
 
         * package -- is the name of the package that contains the description file (if None then assume an absolute description file)
         * description_file -- is the name of the urdf/xacro file
@@ -507,7 +522,7 @@ class SimpleLauncher:
     def gz_prefix():
         return 'ign' if SimpleLauncher.ros_version() < 'humble' else 'gz'
 
-    def create_gz_bridge(self, bridges: list[GazeboBridge], name = 'gz_bridge'):
+    def create_gz_bridge(self, bridges: List[GazeboBridge], name = 'gz_bridge'):
         '''
         Create a ros_gz_bridge::parameter_bridge with the passed GazeboBridge instances
         The bridge has a default name if not specified
@@ -518,8 +533,7 @@ class SimpleLauncher:
         if len(bridges) == 0:
             return
 
-        gz = self.gz_prefix()
-        ros_gz = f'ros_{gz}'
+        ros_gz = 'ros_' + self.gz_prefix()
 
         # add camera_info for image bridges
         im_bridges = [bridge for bridge in bridges if bridge.is_image]
@@ -538,7 +552,7 @@ class SimpleLauncher:
 
             bridges.append(GazeboBridge(gz_head + [cam[0]], ros_head + [cam[1]], 'sensor_msgs/CameraInfo', GazeboBridge.gz2ros))
 
-        std_config = sum([bridge.yaml(gz) for bridge in bridges if not bridge.is_image], [])
+        std_config = sum([bridge.yaml() for bridge in bridges if not bridge.is_image], [])
 
         if std_config.has_elems():
             # use YAML-based configuration, handles Gazebo topics that are invalid to ROS
@@ -569,27 +583,33 @@ class SimpleLauncher:
         self.create_gz_bridge(GazeboBridge.clock(), name)
 
     def gz_launch(self, gz_args = None):
+        '''
+        Wraps gz_sim_launch to be Ignition/GzSim agnostic
+        default version is Fortress (6), will use GZ_VERSION if present
+        '''
 
         if self.gz_prefix() == 'gz':
             launch_file = self.find('ros_gz_sim', 'gz_sim.launch.py')
-            launch_args = 'gz_args'
+            launch_arguments = {'gz_args': gz_args}
         else:
             launch_file = self.find('ros_ign_gazebo', 'ign_gazebo.launch.py')
-            launch_args = 'ign_args'
-        if gz_args is None:
-            self.include(launch_file = launch_file)
-        else:
-            self.include(launch_file = launch_file, launch_arguments = {launch_args: gz_args})
+            launch_arguments = {'ign_args': gz_args}
+
+        self.include(launch_file = launch_file, launch_arguments = launch_arguments)
 
     def spawn_gz_model(self, name, topic = 'robot_description', model_file = None, spawn_args = [], only_new = True):
         '''
         Spawns a model into Gazebo under the given name, from the given topic or file
         Additional spawn_args can be given to specify e.g. the initial pose
         '''
+
         if model_file is not None:
             spawn_args = flatten(spawn_args + ['-file',model_file,'-name', name])
         else:
             spawn_args = flatten(spawn_args + ['-topic',topic,'-name', name])
+
+        if '-world' not in spawn_args:
+            spawn_args += ['-world', GazeboBridge.world()]
 
         # spawn if not already there
         pkg = 'ros_ign_gazebo' if self.ros_version() < 'humble' else 'ros_gz_sim'
