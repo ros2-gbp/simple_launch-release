@@ -1,3 +1,26 @@
+## simple_launch (rolling) - 1.7.2-1
+
+The packages in the `simple_launch` repository were released into the `rolling` distro by running `/usr/bin/bloom-release --ros-distro rolling --track rolling simple_launch` on `Mon, 02 Oct 2023 12:18:42 -0000`
+
+The `simple_launch` package was released.
+
+Version of package(s) in repository `simple_launch`:
+
+- upstream repository: https://github.com/oKermorgant/simple_launch.git
+- release repository: https://github.com/ros2-gbp/simple_launch-release.git
+- rosdistro version: `1.7.0-2`
+- old version: `1.7.0-2`
+- new version: `1.7.2-1`
+
+Versions of tools used:
+
+- bloom version: `0.11.2`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.22.2`
+- rosdistro version: `0.9.0`
+- vcstools version: `0.1.42`
+
+
 ## simple_launch (humble) - 1.7.2-1
 
 The packages in the `simple_launch` repository were released into the `humble` distro by running `/usr/bin/bloom-release --ros-distro humble --track humble simple_launch` on `Mon, 02 Oct 2023 12:16:08 -0000`
