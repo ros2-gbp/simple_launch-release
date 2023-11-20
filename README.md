@@ -24,7 +24,7 @@ The entry point is the `SimpleLauncher` class, which has several capabilities.
 
 - `package` is the node package
 - `executable` is the name of the executable
-- `node_args` are any additional `Node` arguments given as a list
+- `node_args` are any additional `Node` arguments
 
 ### Launch file include
 
@@ -37,16 +37,28 @@ The entry point is the `SimpleLauncher` class, which has several capabilities.
 
 ### Call a service at launch
 
-This line runs a temporary client that wait for a service and calls it when available:
+This line runs a temporary client that waits for a service and calls it when available:
 
-`sl.service(server, request = None)` where
+`sl.call_service(server, request = None, verbose = False)` where
 
-- server is the path to some service
-- request is a dictionary representing the service request. If `None` or incomplete, will use the service request default values.
+- `server` is the path to some service (possibly namespaced). The service type is deduced when it becomes available.
+- `request` is a dictionary representing the service request. If `None` or incomplete, will use the service request default values.
+- `verbose` let the underlying node describe what it is doing
 
 If any request parameter is `__ns` it will be changed to the current namespace.
 
-The service type is deduced when it becomes available.
+
+### Setting parameters
+
+This line runs a temporary client that waits for a node and changes its parameters when available:
+
+`sl.set_parameters(node_name, parameters: dict = {}, verbose = False)` where
+
+- `node_name` is the name of the node (possibly namespaced)
+- `parameters` is a dictionary of (name, value) parameters to be set
+- `verbose` let the underlying node describe what it is doing
+
+This calls the `set_parameters` service of the node with the passed types. Possible errors may happen if the parameters do not exist or are of a different type.
 
 ### Robust types for parameters
 
@@ -59,13 +71,12 @@ In the launch API, differents types are expected for:
 
 The `sl.include`, `sl.node` and `xacro_args` calls allow using any type (the simplest being a single dictionary)  and will convert to the one expected by the API.
 
-### `SimpleSubstution` class
-
-Most all methods listed below return an instance of `SimpleSubstitution` that wraps any Substitution, but that provides concatenation (`+`) and path concatenation (`/`) operators. It is still a `Substitution`, not a raw Python type.
 
 ## Launch arguments
 
-The helper class allows declaring launch arguments and getting them in return:
+`simple_launch` allows declaring launch arguments and getting them in return.
+
+Methods listed below return instances of `SimpleSubstitution` that represents any Substitution, but that provides concatenation (`+`) and path concatenation (`/`) operators. It is still a `Substitution`, not a raw Python type. If run from an `OpaqueFunction` the underlying Python variable is returned.
 
 ### Declare a launch argument
 
@@ -79,9 +90,13 @@ The helper class allows declaring launch arguments and getting them in return:
 
 `sl.arg_map('robot', 'x', 'y')`: returns `{'robot': <robot arg value>, 'x': <x arg value>, 'y': <y arg value>}`
 
-## Node groups
+Typical when forwarding some launch arguments to a node or an included launch file.
 
-Groups are created through the `with sl.group():` syntax and accept both a namespace and/or an if/unless condition:
+## Groups or scopes
+
+Groups are created through the `with sl.group():` syntax and accept, a namespace an if/unless condition and an event.
+
+Actions that are added in a scope inherit from all previous defined groups.
 
 ### By namespace
 
@@ -99,7 +114,8 @@ Groups are created through the `with sl.group():` syntax and accept both a names
   with sl.group(unless_condition=<some expression>):
     sl.node(package, executable)
 ```
-Only one condition can be set in a group, nested condition must be combined first, or used in nested groups.
+- Only one condition can be set in a group, nested condition must be combined first, or used in nested groups.
+- Combining conditions is work in progress as [only the underlying `Substitution`s can be combined](https://answers.ros.org/answers/414006/revisions/).
 
 ### From conditional arguments
 
@@ -119,6 +135,35 @@ Only one condition can be set in a group, nested condition must be combined firs
 ```
 If `if_arg` / `unless_arg` is not a string then it is considered as a `if_condition` / `unless_condition`.
 
+
+### From events
+
+The `when` argument wraps events from the `launch.event_handlers` module. It combines an event and a delay (0 by default)
+
+```
+from simple_launch.events import When, OnProcessStart, OnProcessExit, OnProcessIO
+
+  my_node = sl.node(...)   # reference node
+
+  with sl.group(when = When(my_node, OnProcessStart, 1.)):
+      sl.node(...)  # will run 1 s after main node starts
+
+  with sl.group(when = When(my_node, OnProcessExit)):
+      sl.node(...)  # will run as soon as the main node exists
+
+  with sl.group(when = When(my_node, OnProcessIO, io = 'stdout'):
+      # OnProcessIO events need a function changing the event into an action
+      sl.add_action(lambda event: LogInfo(msg = 'Node says "{}"'.format(
+                      event.text.decode().strip())))
+      # several functions can be used if needed, they will be combined in a single one
+      sl.add_action(lambda event: LogInfo(msg = 'Once again, node says "{}"'.format(
+                      event.text.decode().strip())))
+
+  with sl.group(when = When(delay = 2.)):
+      sl.node(...)  # will run after 2 sec
+```
+
+
 ### Creating containers
 
 This syntax adds the `composition/composition::Talker` as a ComposableNode
@@ -134,6 +179,9 @@ Use the `executable` and `package` parameters if you want to use executors other
   with sl.container(name='my_container', output='screen', executable='component_container_isolated'):
 ```
 
+***It is currently impossible to have group blocks within a container block, as containers can only accept `ComposableNode`s***. A `GroupAction` containing e.g. `PushRosNamespace` and a `ComposableNode` is not itself a `ComposableNode`.
+
+
 ## `use_sim_time`
 
 The current `use_sim_time` setting can be retrieved through `sl.sim_time` that may be:
@@ -145,12 +193,13 @@ The current `use_sim_time` setting can be retrieved through `sl.sim_time` that m
 In all cases, if the `use_sim_time` parameter is explicitely given to a node, it will be used instead of the `SimpleLauncher` instance one.
 
 
-## Wrapper around `OpaqueFunction`
+## `OpaqueFunction` with implicit `.perform(context)`
 
-Most of the use cases can be dealt with substitutions and `with sl.group` blocs.
+Most of the use cases can be dealt with substitutions and `with sl.group` blocks.
 In order to design more imperative launch files, the [`OpaqueFunction`](https://discourse.ros.org/t/simplifying-launch-argument-declaration-and-initialization-in-launch-files/24204) approach can be used. The main drawback is that potential errors are harder to track.
 
 To do this with `simple_launch`:
+
   - the `SimpleLauncher` instance and the argument declaration should be done in the main body of your launch file.
   - then, define a function (e.g. `launch_setup`) that takes no argument, where the logic of the launch file resides.
   - all arguments obtained through `sl.arg` will be basic Python types, obtained from performing the substitutions.
@@ -210,6 +259,8 @@ If any axis is given (e.g. `sl.declare_gazebo_axes(yaw = 3.14)` then only this p
 Such parameters can be retrieved through `sl.gazebo_axes_args()`. As a consequence, it is easy to spawn a model with:
 ```
 sl.declare_gazebo_axes()
+
+sl.robot_description(...)
 sl.spawn_gz_model(name, spawn_args = sl.gazebo_axes_args())
 ```
 
@@ -267,7 +318,7 @@ Obviously if all the path elements are raw strings, you should use `os.path.join
 - `file_name` is the name of the file to find
 - `file_dir` is the path inside the package
 
-If `file_dir` is `None` then the `find` function will actually look for the file inside the package share, assuming that `package` and `file_name` are raw strings.
+If `file_dir` is `None` but `package` and `file_name` are raw strings then the `find` function will actually look for the file inside the package share, using `os.walk`.
 
 If `file_name` is `None` then the function just returns the path to the package share directory (e.g. `get_package_share_directory(package)`)
 
@@ -277,7 +328,7 @@ If `file_name` is `None` then the function just returns the path to the package 
 
 - `description_file` is a URDF or xacro file
 - `description_dir` is the sub-directory of the file. If omitted, let the script search for the file assuming it is a raw string
-- `xacro_args` are passed to xacro
+- `xacro_args` is a dictionary of arguments to forward to xacro
 - `prefix_gz_plugins` is used only if a `frame_prefix` parameter is given to `robot_state_publisher`. In this case it will forward the frame prefix to Gazebo-published messages that include frame names
 - `node_args` are any additional arguments for `robot_state_publisher` (typically remapping)
 
@@ -289,10 +340,12 @@ If `file_name` is `None` then the function just returns the path to the package 
 
 `sl.rviz(config_file = None, warnings = False)`: runs RViz on the given configuration file. If `warnings` is `False` (default) then runs with `log-level FATAL` in order to avoid many messages in the console.
 
+Classical use case: `sl.rviz(sl.find('my_package', 'some_rviz_config.rviz'))`
+
 
 ### Fallback to low-level syntax
 
-If any unavailable functionality is needed, the `sl.entity(entity)` function adds any passed `Entity` at the current namespace / conditional / composition level.
+If any unavailable functionality is needed, the `sl.add_action(action)` function adds any passed `Action` at the current namespace / conditional / event level.
 
 
 ## Examples
@@ -322,11 +375,11 @@ def generate_launch_description():
     sl.declare_arg('use_gui', default_value = True, description='Use JSP gui')
 
     xacro_args = sl.arg_map('prefix', 'x', 'y')
-    xacro_args['prefix'] = [xacro_args['prefix'], ':']
+    xacro_args['prefix'] += '/'  # can sum substitutions and strings
 
     with sl.group(ns=sl.arg('prefix')):
         sl.robot_state_publisher('simple_launch', 'turret.xacro', xacro_args = xacro_args)
-        sl.joint_state_publisher(sources_list = ['source_joints'], use_gui = sl.arg('use_gui'))
+        sl.joint_state_publisher(use_gui = sl.arg('use_gui'))
 
     return sl.launch_description()
 ```
@@ -440,6 +493,11 @@ def generate_launch_description():
     return sl.launch_description()
 ```
 
+### Events and parameters
+
+This [example file](example/event_tutorial_launch.py) is another way to write the [event launch example](https://docs.ros.org/en/rolling/Tutorials/Intermediate/Launch/Using-Event-Handlers.html).
+
+
 ### auto sim time
 
 Here we run Gazebo and force all other nodes to `use_sim_time:=True`, unless this file is included from another one with `use_sim_time:=False`.
@@ -505,3 +563,11 @@ def generate_launch_description():
     return sl.launch_description()
 
 ```
+
+## I want more examples
+
+Other self-contained examples (and slides) have been used to teach the ROS 2 launch file system and the nav stack.
+
+Various aspects of the launch systen are shown in the [anf_launch](https://github.com/oKermorgant/anf_launch) package.
+
+A simple tutorial on `Nav2`  using `simple_launch` is available in the [anf_nav](https://github.com/oKermorgant/anf_nav) package.
