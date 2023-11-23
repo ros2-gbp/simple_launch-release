@@ -2,6 +2,24 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.9.0 (2023-11-23)
+------------------
+* update documentation
+* warnings/errors on misuse of GazeboBridge
+* move example executable to share directory
+* dict cannot be updated with | in Foxy, fallback to dict.update
+* absolute container name when loading in existing container
+* py_eval can now handle conditions
+* Contributors: Olivier Kermorgant
+
+1.8.0 (2023-11-20)
+------------------
+* sync documentation and examples
+* when instead of after for events
+* scoped events
+* add event wrapper
+* Contributors: Olivier Kermorgant
+
 1.7.2 (2023-10-02)
 ------------------
 * simplify logic of try_perform

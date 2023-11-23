@@ -1,4 +1,5 @@
 from .simple_substitution import SimpleSubstitution
+from . import console
 
 
 def only_show_args():
@@ -66,13 +67,14 @@ class GazeboBridge:
 
     @staticmethod
     def read_models():
+
         if GazeboBridge.models is not None:
             return
         if only_show_args():
             # set a dummy world model, we are not running anyway
             GazeboBridge.models = []
             GazeboBridge.world_name = 'default'
-            print('\033[93mThis launch file will request information on a running Gazebo instance at the time of the launch\033[0m')
+            console.warn('This launch file will request information on a running Gazebo instance at the time of the launch')
             return
 
         # GZ / IGN get world: look for a clue in compilation flag, otherwise try both
@@ -91,11 +93,11 @@ class GazeboBridge:
                 GazeboBridge.world_name = line.replace(']','[').split('[')[1]
                 break
         else:
-            print('\033[91mGazeboBridge: could not find any Gazebo instance, launch will probably fail\033[0m')
+            console.warn('GazeboBridge: could not find any Gazebo instance, launch will probably fail')
             return
 
         GazeboBridge.models = [line.strip('- ') for line in models if line.startswith('- ')]
-        print('\033[92mGazeboBridge: connected to a running Gazebo instance\033[0m')
+        console.info('GazeboBridge: connected to a running Gazebo instance')
 
     @staticmethod
     def use_prefix(prefix):
@@ -113,11 +115,11 @@ class GazeboBridge:
             msg = msg.replace('/', '/msg/')
 
         if msg not in self.msg_map:
-            print(f'Cannot build a ros <-> gz bridge for message "{msg}": unknown type')
+            console.error(f'Cannot build a ros <-> gz bridge for message "{msg}": unknown type')
             return
 
         if not GazeboBridge.valid(direction):
-            print(f'Cannot build ros <-> gz bridge with direction "{direction}": should be in {{[,],@}}')
+            console.error(f'Cannot build ros <-> gz bridge with direction "{direction}": should be in {{[,],@}} or use GazeboBrige.{{gz2ros,ros2gz,bidirectional}}')
             return
 
         self.gz_topic = SimpleSubstitution(gz_topic)
