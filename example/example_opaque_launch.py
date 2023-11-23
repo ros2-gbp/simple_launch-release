@@ -32,13 +32,12 @@ def launch_setup():
         sl.include('simple_launch', sl.arg('included') + '.py', launch_arguments=args)
 
     if sl.arg('rviz'):
-        rviz_config = sl.find('simple_launch', 'turret.rviz')
-        sl.node('rviz2', 'rviz2', arguments = ['-d', rviz_config])
+        sl.rviz(sl.find('simple_launch', 'turret.rviz'))
 
     return sl.launch_description()
 
 
-# wrap the opaque_function in the launch description
+# tell SimpleLauncher to rely on the opaque_function in the launch description
 # /!\ no `def generate_launch_description():`
 
 generate_launch_description = sl.launch_description(opaque_function = launch_setup)
