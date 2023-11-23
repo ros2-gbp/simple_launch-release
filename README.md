@@ -33,17 +33,17 @@ The entry point is the `SimpleLauncher` class, which has several capabilities.
 - `package` is the package of the included launch file
 - `launch_file` is the name of the launch file
 - `launch_dir` is its directory inside the package share (`None` to have it found)
-- `launch_arguments` is a list of arguments to pass to the included launch file
+- `launch_arguments` is a dictionary of arguments to pass to the included launch file
 
 ### Call a service at launch
 
 This line runs a temporary client that waits for a service and calls it when available:
 
-`sl.call_service(server, request = None, verbose = False)` where
+`sl.call_service(server, request = None, verbosity = '')` where
 
 - `server` is the path to some service (possibly namespaced). The service type is deduced when it becomes available.
 - `request` is a dictionary representing the service request. If `None` or incomplete, will use the service request default values.
-- `verbose` let the underlying node describe what it is doing
+- `verbosity` let the underlying node describe what it is doing: `'req'` for request info, `'res'` for response info or both with `'reqres'`
 
 If any request parameter is `__ns` it will be changed to the current namespace.
 
@@ -52,11 +52,11 @@ If any request parameter is `__ns` it will be changed to the current namespace.
 
 This line runs a temporary client that waits for a node and changes its parameters when available:
 
-`sl.set_parameters(node_name, parameters: dict = {}, verbose = False)` where
+`sl.set_parameters(node_name, parameters: dict = {}, verbosity = '')` where
 
 - `node_name` is the name of the node (possibly namespaced)
 - `parameters` is a dictionary of (name, value) parameters to be set
-- `verbose` let the underlying node describe what it is doing
+- `verbosity` let the underlying node describe what it is doing: `'req'` for request info, `'res'` for response info or both with `'reqres'`
 
 This calls the `set_parameters` service of the node with the passed types. Possible errors may happen if the parameters do not exist or are of a different type.
 
@@ -76,11 +76,11 @@ The `sl.include`, `sl.node` and `xacro_args` calls allow using any type (the sim
 
 `simple_launch` allows declaring launch arguments and getting them in return.
 
-Methods listed below return instances of `SimpleSubstitution` that represents any Substitution, but that provides concatenation (`+`) and path concatenation (`/`) operators. It is still a `Substitution`, not a raw Python type. If run from an `OpaqueFunction` the underlying Python variable is returned.
-
 ### Declare a launch argument
 
 `sl.declare_arg(name, default_value, description = None)`: declare and returns the argument
+
+Contrary to the base API, the default value is a raw Python type.
 
 ### Retrieve a launch argument
 
@@ -114,8 +114,9 @@ Actions that are added in a scope inherit from all previous defined groups.
   with sl.group(unless_condition=<some expression>):
     sl.node(package, executable)
 ```
+
 - Only one condition can be set in a group, nested condition must be combined first, or used in nested groups.
-- Combining conditions is work in progress as [only the underlying `Substitution`s can be combined](https://answers.ros.org/answers/414006/revisions/).
+- Combining conditions coming from launch arguments can be done with `sl.py_eval` as shown below.
 
 ### From conditional arguments
 
@@ -207,7 +208,7 @@ To do this with `simple_launch`:
 
 Compare [`example_launch.py`](example/example_launch.py) and [`example_opaque_launch.py`](example/example_opaque_launch.py) to see the two approaches on the same logic.
 
-Note that inside an `OpaqueFunction` the if/unless idom reduces to a basic if/else:
+Note that inside an `OpaqueFunction` the if/unless idiom reduces to a basic if/else:
 
 ```
 # with substitutions
@@ -223,75 +224,13 @@ else:
   # do other stuff
 ```
 
+## Other one-liners
 
-## Interaction with Gazebo / Ignition
-
-*Note: Ignition being renamed to Gazebo, all tools in this section use Gazebo / gz names*
-
-An effort was made to be robust to Ignition versus Gazebo uses, i.e. *ign* prefix is used for `foxy` and `galactic` while *gz* prefix is used from `humble`.
-
-### Launch Gazebo
-
-The Gazebo launch file corresponding to the current ROS 2 distribution is launched with
-```
-sl.gz_launch(gz_arguments)
-```
-Namely, it will redirect to either `ros_ign_gazebo/ign_gazebo.launch.py` (`foxy`, `galactic`) or `ros_gz_sim/gz_sim.launch.py` (`humble`+).
-The given `gz_arguments`, if any, will be forwarded either as the `ign_args` or `gz_args`, accordingly.
-
-### Spawn a model
-
-The `sl.spawn_gz_model(name, topic, model_file = None, spawn_args = [], only_new = True)` functions allows easily spawing a model from its `robot_description`:
-
-- `name` is the name this model will get in Gazebo
-- `topic` is the topic to obtain the model from, default is `robot_description` (relative to the current namespace)
-- `model_file` is the path to the (urdf or sdf) file. If defined then this will spawn this model and ignore the topic
-- `only_new` if True, will not spawn the model if it already exists in a running Gazebo instance
-- `spawn_args` are any additional spawn arguments, e.g. the initial pose
-
-**example:** `sl.spawn_gz_model('my_robot', model_file = sl.find('my_pkg', 'my_model.urdf'))`
-
-### Declare initial pose
-
-Calling `sl.declare_gazebo_axes()` will declare all 6 parameters `(x,y,z,roll,pitch,yaw)` with null default values.
-If any axis is given (e.g. `sl.declare_gazebo_axes(yaw = 3.14)` then only this parameter will be declared.
-
-Such parameters can be retrieved through `sl.gazebo_axes_args()`. As a consequence, it is easy to spawn a model with:
-```
-sl.declare_gazebo_axes()
-
-sl.robot_description(...)
-sl.spawn_gz_model(name, spawn_args = sl.gazebo_axes_args())
-```
-
-### Gazebo sim
-
-The `GazeboBridge` class has a few static methods to interact with a **running Gazebo**. Namely:
-
-- `GazeboBridge.world()` returns the current world name
-- `GazeboBridge.model_prefix(model)` builds the Gazebo topic relative to the given model `/world/<world>/model/<model>`
-- `GazeboBridge.has_model(model)` returns `True` of `False` depending on the passed model existing in Gazebo already
-
-### Gazebo bridge
-
-The `GazeboBridge` class allows easily creating bridges when using Gazebo. Gazebo has to be already running in order to get information on the simulation scene.
-
-An instance is created with: `bridge = GazeboBridge(<gazebo_topic>, <ros_topic>, <ros_message>, direction)` where `direction` is either:
-
-- `GazeboBridge.gz2ros` for Gazebo -> ROS
-- `GazeboBridge.ros2gz` for ROS -> Gazebo
-- `GazeboBridge.bidirectional` for both
-
-The Gazebo message type is deduced from the ros message type. Remapping will be set to the given `ros_topic`.
-
-The SimpleLauncher instance can then run all created bridges with: `sl.create_gz_bridge([bridges], <node_name>)`, as illustrated in the examples at this end of this document.
-If some bridges involve `sensor_msgs/Image` then a dedicated `ros_gz_image` bridge will be used. The corresponding `camera_info` topic will be automatically bridged.
-
-## Other shortcuts
+Methods listed below return instances of `SimpleSubstitution` that represent any Substitution, but that provides concatenation (`+`) and path concatenation (`/`) operators. It is still a `Substitution`, not a raw Python type. If run from an `OpaqueFunction` the underlying Python variable is returned.
 
 ### String / substitution concatenation
 
-The following syntax builds the `SimpleSubstitution` corresponding to `<robot name>.xacro`:
+The following syntax builds the `SimpleSubstitution` corresponding to `<robot arg>.xacro`:
 
 `file_name = sl.arg('robot') + '.xacro'`
 
@@ -299,7 +238,7 @@ The following syntax builds the `SimpleSubstitution` corresponding to `<robot na
 
 ### Path concatenation
 
-The following syntax builds the `SimpleSubstitution` corresponding to `<package_path>/urdf/<robot name>.xacro`:
+The following syntax builds the `SimpleSubstitution` corresponding to `<package_path>/urdf/<robot arg>.xacro`:
 
 ```
 file_name = sl.arg('robot') + '.xacro'
@@ -324,6 +263,8 @@ If `file_name` is `None` then the function just returns the path to the package 
 
 ### Robot state publisher
 
+It is quite common to run a `robot_state_publisher` from a `urdf` or `xacro` file. The line below runs it at the current namespace / condition level:
+
 `sl.robot_state_publisher(package, description_file, description_dir=None, xacro_args=None, prefix_gz_plugins=False, **node_args)` where
 
 - `description_file` is a URDF or xacro file
@@ -332,9 +273,31 @@ If `file_name` is `None` then the function just returns the path to the package 
 - `prefix_gz_plugins` is used only if a `frame_prefix` parameter is given to `robot_state_publisher`. In this case it will forward the frame prefix to Gazebo-published messages that include frame names
 - `node_args` are any additional arguments for `robot_state_publisher` (typically remapping)
 
+### Python expressions
+
+`sl.py_eval` will evaluate the given arguments as a Python expression, possibly performed if in an Opaque Function.
+
+```
+# RGB color as a list of [0-255] integers
+sl.declare_arg('color', [255,0,0])
+# same color as a string of [0-1] numbers (URDF format), note the padding commas to get a string
+xacro_color = "'" + sl.py_eval("' '.join(str(c/255) for c in ", sl.arg('color'), ')') + "'"
+```
+
+### Conditions
+
+`sl.py_eval` can be used to combine conditions. It is robust to lower case `true` or `false` and will return a `SimpleSubstitution`.
+
+```
+sl.declare_arg('some_condition', True)
+opposed = sl.py_eval('not ', sl.arg('some_condition'))
+```
+
+Note that `IfCondition` and `UnlessCondition` cannot be combined, [only the underlying `Substitution`s can](https://answers.ros.org/answers/414006/revisions/).
+
 ### Joint state publisher
 
-`sl.joint_state_publisher(use_gui, **node_args)`: fires up a `joint_state_publisher`, with or without the gui.
+`sl.joint_state_publisher(use_gui, **node_args)`: fires up a `joint_state_publisher`, with or without the gui, in the current namespace.
 
 ### Rviz
 
@@ -347,6 +310,77 @@ Classical use case: `sl.rviz(sl.find('my_package', 'some_rviz_config.rviz'))`
 
 If any unavailable functionality is needed, the `sl.add_action(action)` function adds any passed `Action` at the current namespace / conditional / event level.
 
+## Interaction with Gazebo / Ignition
+
+*Note: Ignition being renamed to Gazebo, all tools in this section use Gazebo / gz names*
+
+An effort was made to be robust to Ignition versus Gazebo uses, i.e. *ign* prefix is used for `foxy` and `galactic` while *gz* prefix is used from `humble`.
+
+### Launch Gazebo
+
+The Gazebo launch file corresponding to the current ROS 2 distribution is launched with
+```
+sl.gz_launch(gz_arguments)
+```
+Namely, it will redirect to either `ros_ign_gazebo/ign_gazebo.launch.py` (`foxy`, `galactic`) or `ros_gz_sim/gz_sim.launch.py` (`humble`+).
+The given `gz_arguments`, if any, will be forwarded either as the `ign_args` or `gz_args`, accordingly.
+
+### Spawn a model
+
+The following function allows easily spawing a model from its `robot_description`:
+
+`sl.spawn_gz_model(name, topic, model_file = None, spawn_args = [], only_new = True)`
+
+- `name` is the name this model will get in Gazebo
+- `topic` is the topic to obtain the model from, default is `robot_description` (relative to the current namespace)
+- `model_file` is the path to the (urdf or sdf) file. If defined then this will spawn this model and ignore the topic
+- `only_new` if True, will not spawn the model if it already exists in a running Gazebo instance
+- `spawn_args` are any additional spawn arguments, e.g. the initial pose
+
+**example:** `sl.spawn_gz_model('my_robot', model_file = sl.find('my_pkg', 'my_model.urdf'))`
+
+### Declare initial pose
+
+Calling `sl.declare_gazebo_axes()` will declare all 6 parameters `(x,y,z,roll,pitch,yaw)` with `0` as default values.
+If any axis is given (e.g. `sl.declare_gazebo_axes(yaw = 3.14)` then only this parameter will be declared.
+
+Such parameters can be retrieved through `sl.gazebo_axes_args()`. As a consequence, it is easy to spawn a model with:
+```
+sl.declare_gazebo_axes()
+
+sl.robot_description(...)
+sl.spawn_gz_model(name, spawn_args = sl.gazebo_axes_args())
+```
+
+### Gazebo sim
+
+The `GazeboBridge` class has a few static methods to interact with a **running Gazebo**. Namely:
+
+- `GazeboBridge.world()` returns the current world name
+- `GazeboBridge.model_prefix(model)` builds the Gazebo topic relative to the given model `/world/<world>/model/<model>`
+- `GazeboBridge.has_model(model)` returns `True` of `False` depending on the passed model existing in Gazebo already
+
+These methods request information on Gazebo at launch time. If no instance is found, the launch file will probably fail.
+
+### Gazebo bridge
+
+The `GazeboBridge` class allows easily creating bridges when using Gazebo. Gazebo has to be already running in order to get information on the simulation scene.
+
+An instance is created with: `bridge = GazeboBridge(<gazebo_topic>, <ros_topic>, <ros_message>, direction)` where `direction` is either:
+
+- `GazeboBridge.gz2ros` for Gazebo -> ROS
+- `GazeboBridge.ros2gz` for ROS -> Gazebo
+- `GazeboBridge.bidirectional` for both
+
+The Gazebo message type is [deduced from the ROS message type](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_bridge). Remapping will be set to the given `ros_topic`.
+
+The SimpleLauncher instance can then run all created bridges with: `sl.create_gz_bridge([bridges], <node_name>)`, as illustrated in the examples at this end of this document.
+If some bridges involve `sensor_msgs/Image` then a dedicated `ros_gz_image` bridge will be used. The corresponding `camera_info` topic will be also bridged.
+
+A common instance of the bridge is the clock. This one can be:
+
+- created with `GazeboBridge.clock()`: returns a `GazeboBridge` instance, not added to any node yet
+- or run directly with `sl.create_gz_clock_bridge()` (actually runs `sl.create_gz_bridge([GazeboBridge.clock()])`)
 
 ## Examples
 
@@ -468,10 +502,40 @@ def launch_setup():
     return sl.launch_description()
 
 
-# wrap the opaque_function in the launch description
+# tell SimpleLauncher to rely on the opaque_function in the launch description
 # /!\ no `def generate_launch_description():`
 
 generate_launch_description = sl.launch_description(opaque_function = launch_setup)
+```
+
+
+### Combining conditions
+
+The file below shows how to use `sl.py_eval` to combine conditions. We have to build a valid Python expression, not forgetting the spaces around `and`/`or`.
+
+```
+from simple_launch import SimpleLauncher
+
+def generate_launch_description():
+
+    sl = SimpleLauncher()
+
+    cond1 = sl.declare_arg('cond1', True)
+    cond2 = sl.declare_arg('cond2', False)
+
+    for logic in ('and', 'or'):
+
+        # builds <cond1> <logic> <cond2> Python expression
+        combined = sl.py_eval(cond1, f' {logic} ', cond2)
+
+        sl.log_info([f'{logic} condition is ', combined])
+
+        with sl.group(if_condition = combined):
+            sl.node('demo_nodes_cpp', 'talker', name = f'talker_{logic}')
+
+        # also works with sl.node(..., condition = IfCondition(combined))
+
+    return sl.launch_description()
 ```
 
 
@@ -495,7 +559,7 @@ def generate_launch_description():
 
 ### Events and parameters
 
-This [example file](example/event_tutorial_launch.py) is another way to write the [event launch example](https://docs.ros.org/en/rolling/Tutorials/Intermediate/Launch/Using-Event-Handlers.html).
+This [example file](example/event_tutorial_launch.py) is another way to write the [event launch example](https://docs.ros.org/en/rolling/Tutorials/Intermediate/Launch/Using-Event-Handlers.html). If does a little more work and is a little smarter, as the passed `new_background_r` is applied as soon as it has a valid value.
 
 
 ### auto sim time
@@ -524,7 +588,7 @@ def generate_launch_description():
 ### Robot description and conditionnal Gazebo bridge
 
 The file below only runs by default a `robot_state_publisher` with `use_sim_time:=False`.
-However, if it is included from another file with `use_sim_time:=True` then it also spawns the robot into Gazebo and run two bridges for joint states and pose.
+However, if it is included from another file with `use_sim_time:=True` then it also spawns the robot into Gazebo and runs two bridges for joint states and pose.
 
 ```
 from simple_launch import SimpleLauncher, GazeboBridge
@@ -545,13 +609,16 @@ def generate_launch_description():
             # only execute this group if use_sim_time was set to True
 
             # spawn in Gazebo at default pose if not already here
-            # uses GazeboBridge.has_model(robot) under the hood and calls ros_ign_gazebo::create
+            # uses GazeboBridge.has_model(robot) under the hood and calls ros_gz_sim::create
             sl.spawn_gz_model(robot)
 
             # create a bridge for joint states @ /world/<world>/model/<robot>/joint_state
             # note the relative ROS topic 'joint_states' that is actually namespaced
             gz_js_topic = GazeboBridge.model_prefix(robot)/'joint_state'
-            js_bridge = GazeboBridge(gz_js_topic, 'joint_states', 'sensor_msgs/JointState', GazeboBridge.gz2ros)
+            js_bridge = GazeboBridge(gz_topic = gz_js_topic,
+                                     ros_topic = 'joint_states',
+                                     msg = 'sensor_msgs/JointState',
+                                     direction = GazeboBridge.gz2ros)
 
             # pose publisher bridge @ /model/<robot>
             pose_bridge = GazeboBridge('/model'/robot/'/pose',

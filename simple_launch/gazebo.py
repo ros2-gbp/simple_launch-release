@@ -1,6 +1,7 @@
 from .simple_substitution import SimpleSubstitution
 from . import console
 
+
 def only_show_args():
     '''
     Returns True if the launch file was launched only to show its arguments
@@ -66,6 +67,7 @@ class GazeboBridge:
 
     @staticmethod
     def read_models():
+
         if GazeboBridge.models is not None:
             return
         if only_show_args():
@@ -113,11 +115,11 @@ class GazeboBridge:
             msg = msg.replace('/', '/msg/')
 
         if msg not in self.msg_map:
-            print(f'Cannot build a ros <-> gz bridge for message "{msg}": unknown type')
+            console.error(f'Cannot build a ros <-> gz bridge for message "{msg}": unknown type')
             return
 
         if not GazeboBridge.valid(direction):
-            print(f'Cannot build ros <-> gz bridge with direction "{direction}": should be in {{[,],@}}')
+            console.error(f'Cannot build ros <-> gz bridge with direction "{direction}": should be in {{[,],@}} or use GazeboBrige.{{gz2ros,ros2gz,bidirectional}}')
             return
 
         self.gz_topic = SimpleSubstitution(gz_topic)
