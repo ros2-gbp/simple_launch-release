@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from .simple_substitution import SimpleSubstitution, flatten
 from .group import Group
 from . import console
-from .gazebo import only_show_args, silent_exec, GazeboBridge
+from .gazebo import only_show_args, silent_exec, GazeboBridge, ros_gz_prefix
 from typing import Text, List
 
 NODE_REMAPS = LAUNCH_ARGS = 1
@@ -81,25 +81,17 @@ class SimpleLauncher:
 
         # deal with use_sim_time
         if isinstance(use_sim_time, bool):
-            self.declare_arg('use_sim_time', use_sim_time,
+            self.sim_time = self.declare_arg('use_sim_time', use_sim_time,
                              description = 'Force use_sim_time parameter of instanciated nodes')
-            self.auto_sim_time(self.arg('use_sim_time'))
         elif use_sim_time != 'auto':
             console.warn("`use_sim_time` should be None, a Boolean, or 'auto' to rely on the /clock topic, ignoring")
         elif only_show_args():
             console.warn("This launch file will forward use_sim_time to all nodes if /clock is advertized at the time of the launch")
             return
         else:
-            self.auto_sim_time()
-
-    def auto_sim_time(self, force = None):
-        '''
-        Forces use_sim_time for all nodes.
-        If force is None then checks if /clock is being published and sets use_sim_time if this is the case
-        '''
-        if force is None:
+            # detect if any /clock topic is advertized
             self.sim_time = False
-            clock_info = silent_exec('ros2 topic info /clock')
+            clock_info = silent_exec('ros2 topic info /clock').splitlines()
             for line in clock_info:
                 if line.startswith('Publisher count'):
                     self.sim_time = int(line.split()[-1]) > 0
@@ -108,8 +100,6 @@ class SimpleLauncher:
                 console.info("SimpleLauncher(use_sim_time='auto'): found a /clock topic, forwarding use_sim_time:=True to all nodes")
             else:
                 console.info("SimpleLauncher(use_sim_time='auto'): no /clock topic found, forwarding use_sim_time:=False to all nodes")
-        else:
-            self.sim_time = force
 
     def declare_arg(self, name, default_value = None, **kwargs):
         '''
@@ -182,7 +172,7 @@ class SimpleLauncher:
         return generate_launch_description
 
     def __has_context(self) -> bool:
-        return self.__context is not None
+        return self.__context is not None   
 
     def __try_perform(self, substitution):
         '''
@@ -331,7 +321,7 @@ class SimpleLauncher:
 
     def node(self, package = None, executable = None, plugin = None, **node_args):
         '''
-        Add a node to the launch tree. If auto_sim_time was used then the use_sim_time parameter will be set if not explicitely given
+        Add a node to the launch tree. If use_sim_time was used then the use_sim_time parameter will be set if not explicitely given
 
         * package -- name of the package
         * executable (classical node) -- name of the node within the package, if None then assumes the node has the name of the package
@@ -349,6 +339,9 @@ class SimpleLauncher:
         for key,target in (('parameters',NODE_PARAMS),('remappings',NODE_REMAPS)):
             if key in node_args:
                 node_args[key] = adapt_type(node_args[key], target)
+
+        if 'arguments' in node_args and isinstance(node_args['arguments'], str):
+            node_args['arguments'] = node_args['arguments'].split()
 
         if self.sim_time is not None:
             if 'parameters' in node_args:
@@ -441,8 +434,7 @@ class SimpleLauncher:
             cmd += adapt_type(xacro_args, XACRO_ARGS)
         return SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'")
 
-    def robot_state_publisher(self, package=None, description_file=None, description_dir=None, xacro_args=None, prefix_gz_plugins=False,
-                              namespaced_tf = False, **node_args):
+    def robot_state_publisher(self, package=None, description_file=None, description_dir=None, xacro_args=None, prefix_gz_plugins=False, namespaced_tf = False, **node_args):
         '''
         Add a robot state publisher node to the launch tree using the given description (urdf / xacro) file.
 
@@ -523,10 +515,6 @@ class SimpleLauncher:
         args = flatten([['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes])
         return [stringify(arg) for arg in args]
 
-    @staticmethod
-    def gz_prefix():
-        return 'ign' if SimpleLauncher.ros_version() < 'humble' else 'gz'
-
     def create_gz_bridge(self, bridges: List[GazeboBridge], name = 'gz_bridge'):
         '''
         Create a ros_gz_bridge::parameter_bridge with the passed GazeboBridge instances
@@ -538,22 +526,23 @@ class SimpleLauncher:
         if len(bridges) == 0:
             return
 
-        ros_gz = 'ros_' + self.gz_prefix()
+        ros_gz = 'ros_' + ros_gz_prefix()
 
         # add camera_info for image bridges
         im_bridges = [bridge for bridge in bridges if bridge.is_image]
 
         for bridge in im_bridges:
+
             gz_head, gz_tail = bridge.gz_topic.split_tail()
             ros_head, ros_tail = bridge.ros_topic.split_tail()
 
-            if not all(isinstance(tail, Text) and '/image' in tail for tail in (ros_tail, gz_tail)):
+            if not all(isinstance(tail, Text) and 'image' in tail for tail in (ros_tail, gz_tail)):
                 continue
 
             cam = []
             for tail in (gz_tail, ros_tail):
-                idx = tail.rfind('/image')
-                cam.append(tail[:idx] + '/camera_info')
+                idx = tail.rfind('image')
+                cam.append(tail[:idx] + 'camera_info')
 
             bridges.append(GazeboBridge(gz_head + [cam[0]], ros_head + [cam[1]], 'sensor_msgs/CameraInfo', GazeboBridge.gz2ros))
 
@@ -593,7 +582,7 @@ class SimpleLauncher:
         default version is Fortress (6), will use GZ_VERSION if present
         '''
 
-        if self.gz_prefix() == 'gz':
+        if ros_gz_prefix() == 'gz':
             launch_file = self.find('ros_gz_sim', 'gz_sim.launch.py')
             launch_arguments = {'gz_args': gz_args}
         else:
@@ -617,7 +606,7 @@ class SimpleLauncher:
             spawn_args += ['-world', GazeboBridge.world()]
 
         # spawn if not already there
-        pkg = 'ros_ign_gazebo' if self.ros_version() < 'humble' else 'ros_gz_sim'
+        pkg = 'ros_ign_gazebo' if ros_gz_prefix() == 'ign' else 'ros_gz_sim'
         node = Node(package = pkg, executable = 'create', arguments=spawn_args)
 
         if only_new:
