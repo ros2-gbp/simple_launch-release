@@ -2,6 +2,26 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.9.1 (2024-02-20)
+------------------
+* simplify + debug logic of SimpleSubstitution divisions
+* image instead of /image to be detected as an image topic
+* remove auto_sim_time function
+* more robust to various combinations of ROS and Gazebo
+* default Gazebo is still ignition Fortress, better error message about GZ_VERSION
+* add new bridges for Gazebo
+* Contributors: Olivier Kermorgant
+
+1.9.0 (2023-11-23)
+------------------
+* update documentation
+* warnings/errors on misuse of GazeboBridge
+* move example executable to share directory
+* dict cannot be updated with | in Foxy, fallback to dict.update
+* absolute container name when loading in existing container
+* py_eval can now handle conditions
+* Contributors: Olivier Kermorgant
+
 1.8.0 (2023-11-20)
 ------------------
 * sync documentation and examples
