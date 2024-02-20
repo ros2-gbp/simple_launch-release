@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from .simple_substitution import SimpleSubstitution, flatten
 from .group import Group
 from . import console
-from .gazebo import only_show_args, silent_exec, GazeboBridge
+from .gazebo import only_show_args, silent_exec, GazeboBridge, ros_gz_prefix
 from typing import Text, List
 
 NODE_REMAPS = LAUNCH_ARGS = 1
@@ -81,25 +81,17 @@ class SimpleLauncher:
 
         # deal with use_sim_time
         if isinstance(use_sim_time, bool):
-            self.declare_arg('use_sim_time', use_sim_time,
+            self.sim_time = self.declare_arg('use_sim_time', use_sim_time,
                              description = 'Force use_sim_time parameter of instanciated nodes')
-            self.auto_sim_time(self.arg('use_sim_time'))
         elif use_sim_time != 'auto':
             console.warn("`use_sim_time` should be None, a Boolean, or 'auto' to rely on the /clock topic, ignoring")
         elif only_show_args():
             console.warn("This launch file will forward use_sim_time to all nodes if /clock is advertized at the time of the launch")
             return
         else:
-            self.auto_sim_time()
-
-    def auto_sim_time(self, force = None):
-        '''
-        Forces use_sim_time for all nodes.
-        If force is None then checks if /clock is being published and sets use_sim_time if this is the case
-        '''
-        if force is None:
+            # detect if any /clock topic is advertized
             self.sim_time = False
-            clock_info = silent_exec('ros2 topic info /clock')
+            clock_info = silent_exec('ros2 topic info /clock').splitlines()
             for line in clock_info:
                 if line.startswith('Publisher count'):
                     self.sim_time = int(line.split()[-1]) > 0
@@ -108,14 +100,12 @@ class SimpleLauncher:
                 console.info("SimpleLauncher(use_sim_time='auto'): found a /clock topic, forwarding use_sim_time:=True to all nodes")
             else:
                 console.info("SimpleLauncher(use_sim_time='auto'): no /clock topic found, forwarding use_sim_time:=False to all nodes")
-        else:
-            self.sim_time = force
 
     def declare_arg(self, name, default_value = None, **kwargs):
         '''
         Add an argument to the launch file
         '''
-        if self.has_context():
+        if self.__has_context():
             console.error(f'declaring a launch argument "{name}" while inside an opaque function\nyou should declare the arguments before the function')
 
         self.__groups[0].add_action(DeclareLaunchArgument(
@@ -133,29 +123,13 @@ class SimpleLauncher:
         from os import environ
         return environ['ROS_DISTRO']
 
-    def declare_gazebo_axes(self, **axes):
-        '''
-        Declares classical Gazebo axes as launch arguments
-        If axes is void then declares all 6 axes with default value 0
-        Otherwise declares the given axes with the given defaults
-        '''
-        if len(axes):
-            self.gz_axes = [axis for axis,_ in axes.items() if axis in self.gz_axes]
-            for axis in self.gz_axes:
-                self.declare_arg(axis, default_value=axes[axis])
-            return
-        # no axis specified,
-        self.gz_axes = ('x','y','z','yaw','pitch','roll')
-        for axis in self.gz_axes:
-            self.declare_arg(axis, default_value=0.)
-
     def arg(self, name):
         '''
         Retrieve an argument
         '''
         if type(name) != str:
-            return self.try_perform(name)
-        return self.try_perform(SimpleSubstitution(LaunchConfiguration(name)))
+            return self.__try_perform(name)
+        return self.__try_perform(SimpleSubstitution(LaunchConfiguration(name)))
 
     def arg_map(self, *names):
         '''
@@ -178,9 +152,9 @@ class SimpleLauncher:
         if opaque_function is None:
             # classical call without opaque function
             main_actions = self.__cur_group.close()
-            return main_actions if self.has_context() else LaunchDescription(main_actions)
+            return main_actions if self.__has_context() else LaunchDescription(main_actions)
 
-        if self.has_context():
+        if self.__has_context():
             # opaque function but we already have context
             console.error('Calling SimpleLauncher.launch_description with opaque function within an opaque function makes it really opaque')
 
@@ -197,14 +171,14 @@ class SimpleLauncher:
 
         return generate_launch_description
 
-    def has_context(self):
-        return self.__context is not None
+    def __has_context(self) -> bool:
+        return self.__context is not None   
 
-    def try_perform(self, substitution):
+    def __try_perform(self, substitution):
         '''
         Returns the performed value if the context is defined, otherwise the substitution
         '''
-        if isinstance(substitution, Text) or not self.has_context():
+        if isinstance(substitution, Text) or not self.__has_context():
             return substitution
 
         from ast import literal_eval
@@ -221,28 +195,11 @@ class SimpleLauncher:
     def py_eval(self, *elems):
         '''
         Evaluates the Python expression
-        Make sure Boolean are in Pythonic case
         '''
-        expr = list(map(stringify, elems))
-        expr = SimpleSubstitution("eval('", expr, "'.replace('true', 'True').replace('false', 'False'))")
-        return self.try_perform(SimpleSubstitution(PythonExpression(expr)))
-
-    def name_join(self, *elems):
-        return self.try_perform(SimpleSubstitution(elems))
-
-    def gazebo_axes_args(self):
-        '''
-        Generate arguments corresponding to Gazebo spawner
-        '''
-        axes = {'x': 'x', 'y': 'y', 'z': 'z', 'roll': 'R', 'pitch': 'P', 'yaw': 'Y'}
-        args = flatten([['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes])
-        return [stringify(arg) for arg in args]
-
-    def path_join(self, *pathes):
-        ret = SimpleSubstitution()
-        for elem in pathes:
-            ret /= elem
-        return self.try_perform(ret)
+        # add a small check on lower case when combining conditions
+        # TODO make it robust to forgotten spaces in and/or/not without relying on str.replace
+        expr = SimpleSubstitution('eval("',elems,'", {"true": True, "false": False})')
+        return self.__try_perform(SimpleSubstitution(PythonExpression(expr)))
 
     def find(self, package, file_name=None, file_dir = None):
         '''
@@ -362,9 +319,9 @@ class SimpleLauncher:
         self.__cur_group.add_action(action)
         return action
 
-    def node(self, package, executable = None, plugin = None, **node_args):
+    def node(self, package = None, executable = None, plugin = None, **node_args):
         '''
-        Add a node to the launch tree. If auto_sim_time was used then the use_sim_time parameter will be set if not explicitely given
+        Add a node to the launch tree. If use_sim_time was used then the use_sim_time parameter will be set if not explicitely given
 
         * package -- name of the package
         * executable (classical node) -- name of the node within the package, if None then assumes the node has the name of the package
@@ -382,6 +339,9 @@ class SimpleLauncher:
         for key,target in (('parameters',NODE_PARAMS),('remappings',NODE_REMAPS)):
             if key in node_args:
                 node_args[key] = adapt_type(node_args[key], target)
+
+        if 'arguments' in node_args and isinstance(node_args['arguments'], str):
+            node_args['arguments'] = node_args['arguments'].split()
 
         if self.sim_time is not None:
             if 'parameters' in node_args:
@@ -441,8 +401,10 @@ class SimpleLauncher:
         Sets the requested parameters for this node
         verbosity is none or 'req', 'res' or 'reqres' to get information on service call
         '''
+        params = {'simple_launch.node': node_name, 'simple_launch.keys': list(parameters.keys()), 'simple_launch.verbosity': verbosity}
+        params.update(parameters)
         return self.node('simple_launch', 'set_parameters',
-                  parameters = parameters | {'simple_launch.node': node_name, 'simple_launch.keys': list(parameters.keys()), 'simple_launch.verbosity': verbosity},
+                  parameters = params,
                   **kwargs)
 
     def rviz(self, config_file = None, warnings = False):
@@ -472,8 +434,7 @@ class SimpleLauncher:
             cmd += adapt_type(xacro_args, XACRO_ARGS)
         return SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'")
 
-    def robot_state_publisher(self, package=None, description_file=None, description_dir=None, xacro_args=None, prefix_gz_plugins=False,
-                              namespaced_tf = False, **node_args):
+    def robot_state_publisher(self, package=None, description_file=None, description_dir=None, xacro_args=None, prefix_gz_plugins=False, namespaced_tf = False, **node_args):
         '''
         Add a robot state publisher node to the launch tree using the given description (urdf / xacro) file.
 
@@ -530,9 +491,29 @@ class SimpleLauncher:
 
 # Gazebo / Ignition methods
 
-    @staticmethod
-    def gz_prefix():
-        return 'ign' if SimpleLauncher.ros_version() < 'humble' else 'gz'
+    def declare_gazebo_axes(self, **axes):
+        '''
+        Declares classical Gazebo axes as launch arguments
+        If axes is void then declares all 6 axes with default value 0
+        Otherwise declares the given axes with the given defaults
+        '''
+        if len(axes):
+            self.gz_axes = [axis for axis,_ in axes.items() if axis in self.gz_axes]
+            for axis in self.gz_axes:
+                self.declare_arg(axis, default_value=axes[axis])
+            return
+        # no axis specified,
+        self.gz_axes = ('x','y','z','yaw','pitch','roll')
+        for axis in self.gz_axes:
+            self.declare_arg(axis, default_value=0.)
+
+    def gazebo_axes_args(self):
+        '''
+        Generate arguments corresponding to Gazebo spawner
+        '''
+        axes = {'x': 'x', 'y': 'y', 'z': 'z', 'roll': 'R', 'pitch': 'P', 'yaw': 'Y'}
+        args = flatten([['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes])
+        return [stringify(arg) for arg in args]
 
     def create_gz_bridge(self, bridges: List[GazeboBridge], name = 'gz_bridge'):
         '''
@@ -545,22 +526,23 @@ class SimpleLauncher:
         if len(bridges) == 0:
             return
 
-        ros_gz = 'ros_' + self.gz_prefix()
+        ros_gz = 'ros_' + ros_gz_prefix()
 
         # add camera_info for image bridges
         im_bridges = [bridge for bridge in bridges if bridge.is_image]
 
         for bridge in im_bridges:
+
             gz_head, gz_tail = bridge.gz_topic.split_tail()
             ros_head, ros_tail = bridge.ros_topic.split_tail()
 
-            if not all(isinstance(tail, Text) and '/image' in tail for tail in (ros_tail, gz_tail)):
+            if not all(isinstance(tail, Text) and 'image' in tail for tail in (ros_tail, gz_tail)):
                 continue
 
             cam = []
             for tail in (gz_tail, ros_tail):
-                idx = tail.rfind('/image')
-                cam.append(tail[:idx] + '/camera_info')
+                idx = tail.rfind('image')
+                cam.append(tail[:idx] + 'camera_info')
 
             bridges.append(GazeboBridge(gz_head + [cam[0]], ros_head + [cam[1]], 'sensor_msgs/CameraInfo', GazeboBridge.gz2ros))
 
@@ -600,7 +582,7 @@ class SimpleLauncher:
         default version is Fortress (6), will use GZ_VERSION if present
         '''
 
-        if self.gz_prefix() == 'gz':
+        if ros_gz_prefix() == 'gz':
             launch_file = self.find('ros_gz_sim', 'gz_sim.launch.py')
             launch_arguments = {'gz_args': gz_args}
         else:
@@ -624,11 +606,11 @@ class SimpleLauncher:
             spawn_args += ['-world', GazeboBridge.world()]
 
         # spawn if not already there
-        pkg = 'ros_ign_gazebo' if self.ros_version() < 'humble' else 'ros_gz_sim'
+        pkg = 'ros_ign_gazebo' if ros_gz_prefix() == 'ign' else 'ros_gz_sim'
         node = Node(package = pkg, executable = 'create', arguments=spawn_args)
 
         if only_new:
-            if self.has_context():
+            if self.__has_context():
                 if not GazeboBridge.has_model(name):
                     self.add_action(node)
             else:
@@ -637,6 +619,17 @@ class SimpleLauncher:
         else:
             self.add_action(node)
 
-    # backward compatibilites for new syntax
+    # deprecated section
+
+    def name_join(self, *elems):
+        return self.__try_perform(SimpleSubstitution(elems))
+
+    def path_join(self, *pathes):
+        ret = SimpleSubstitution()
+        for elem in pathes:
+            ret /= elem
+        return self.__try_perform(ret)
+
+    # backward compatibility for new syntax
     service = call_service
     entity = add_action
