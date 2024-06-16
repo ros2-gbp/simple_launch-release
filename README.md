@@ -11,12 +11,13 @@ The entry point is the `SimpleLauncher` class, which has several capabilities.
 
 ### Namespace and argument parser initialization
 
-`sl = SimpleLauncher(namespace = '', use_sim_time = None)`
+`sl = SimpleLauncher(namespace = '', use_sim_time = None, scope_included_files = False)`
 
 - will initialize all nodes relative to the given namespace
 - if `use_sim_time` is a Boolean, creates a `use_sim_time` launch argument with this value as the default and forwards it to all nodes, unless explicitely specified when running the node
 - if `use_sim_time` is `'auto'`, then `SimpleLauncher` will set it to `True` if the `/clock` topic is advertized (case of an already running simulation). **This may have side effects if the `/clock` topic is advertized but you want to use this launch file with system clock**.
 - if `use_sim_time` is `None` (default) then no particular value is forwarded to the nodes
+- if `scope_included_files` is `False` (default) then including another launch file that shares the same argument but while passing another value for this argument, will also [modify the value of this argument after the inclusion](https://robotics.stackexchange.com/questions/98997/ros2-foxy-python-launch-argument-scope-when-nesting-launch-files). This is the default behavior of `launch` but can be undesired. Inside an `OpaqueFunction` the behavior is to be scoped anyway (the argument value is resolved) and `scope_included_files` has no effect.
 
 ### Node registration
 
@@ -265,13 +266,12 @@ If `file_name` is `None` then the function just returns the path to the package 
 
 It is quite common to run a `robot_state_publisher` from a `urdf` or `xacro` file. The line below runs it at the current namespace / condition level:
 
-`sl.robot_state_publisher(package, description_file, description_dir=None, xacro_args=None, prefix_gz_plugins=False, **node_args)` where
+`sl.robot_state_publisher(package, description_file, description_dir=None, xacro_args=None, **node_args)` where
 
 - `description_file` is a URDF or xacro file
 - `description_dir` is the sub-directory of the file. If omitted, let the script search for the file assuming it is a raw string
 - `xacro_args` is a dictionary of arguments to forward to xacro
-- `prefix_gz_plugins` is used only if a `frame_prefix` parameter is given to `robot_state_publisher`. In this case it will forward the frame prefix to Gazebo-published messages that include frame names
-- `node_args` are any additional arguments for `robot_state_publisher` (typically remapping)
+- `node_args` are any additional arguments for `robot_state_publisher` (remappings / parameters)
 
 ### Python expressions
 
