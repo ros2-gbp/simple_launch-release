@@ -12,7 +12,7 @@ from .simple_substitution import SimpleSubstitution, flatten
 from .group import Group
 from . import console
 from .gazebo import only_show_args, silent_exec, GazeboBridge, ros_gz_prefix, gz_launch_setup
-from typing import Text, List, Tuple
+from typing import Text, List, Iterable, Tuple, Union
 
 NODE_REMAPS = LAUNCH_ARGS = 1
 NODE_PARAMS = 2
@@ -63,11 +63,12 @@ def adapt_type(params, target):
 
 class SimpleLauncher:
 
-    def __init__(self, namespace = None, use_sim_time = None):
+    def __init__(self, namespace = None, use_sim_time = None, scope_included_files = False):
         '''
         Initializes entities in the given workspace
         If use_sim_time is True or False, creates a `use_sim_time` launch argument with this value as the default and forwards it to all nodes
         If use_sim_time is 'auto', then SimpleLauncher will set it to True if the /clock topic is advertized (case of an already running simulation)
+        scope_included_files will make this launch file include other ones with scoped arguments, so that modifying them does not override the ones of this launch file
         '''
         # group tree
         self.__groups = [Group(namespace)]
@@ -75,6 +76,7 @@ class SimpleLauncher:
         self.sim_time = None
         self.gz_axes = ('x','y','z','yaw','pitch','roll')
         self.__context = None
+        self.scope_included_files = scope_included_files
 
         if use_sim_time is None:
             return
@@ -101,6 +103,10 @@ class SimpleLauncher:
             else:
                 console.info("SimpleLauncher(use_sim_time='auto'): no /clock topic found, forwarding use_sim_time:=False to all nodes")
 
+        # good candidate to replace tedious mechanics of use_sim_time
+        # but will not be forwared to e.g. events and other stuff
+        #self.add_action(SetParameter('use_sim_time', self.sim_time))
+
     def declare_arg(self, name, default_value = None, **kwargs):
         '''
         Add an argument to the launch file
@@ -109,7 +115,9 @@ class SimpleLauncher:
             console.error(f'declaring a launch argument "{name}" while inside an opaque function\nyou should declare the arguments before the function')
 
         def to_string_nested(elem):
-            if not isinstance(elem, (List, Tuple)):
+            if isinstance(elem, str):
+                return elem
+            elif not isinstance(elem, Iterable):
                 return str(elem)
             elem = list(elem)
             for i,item in enumerate(elem):
@@ -354,8 +362,10 @@ class SimpleLauncher:
 
         if self.sim_time is not None:
             if 'parameters' in node_args:
-                if type(node_args['parameters'][0]) == dict and 'use_sim_time' not in node_args['parameters'][0]:
-                    node_args['parameters'][0]['use_sim_time'] = self.sim_time
+
+                if type(node_args['parameters'][0]) == dict:
+                    if 'use_sim_time' not in node_args['parameters'][0]:
+                        node_args['parameters'][0]['use_sim_time'] = self.sim_time
                 elif type(node_args['parameters'][0]) == str:
                     # yaml-file, check if it contains use_sim_time
                     config_file = node_args['parameters'][0]
@@ -365,8 +375,8 @@ class SimpleLauncher:
                         if not any(line.strip().startswith('use_sim_time') for line in config):
                             node_args['parameters'].append({'use_sim_time': self.sim_time})
                 else:
-                    console.neutral(f'skipping use_sim_time for node {package}/{executable}, cannot check if already here')
-#                    #node_args['parameters'] += [{'use_sim_time': self.sim_time}]
+                    console.neutral(f'node {package}/{executable} has an unkown config file, setting use_sim_time may fail')
+                    node_args['parameters'] += [{'use_sim_time': self.sim_time}]
             else:
                 node_args['parameters'] = [{'use_sim_time': self.sim_time}]
 
@@ -390,9 +400,17 @@ class SimpleLauncher:
         Include another launch file
         '''
         launch_file = self.find(package, launch_file, launch_dir)
-        return self.add_action(IncludeLaunchDescription(
+
+        inclusion = IncludeLaunchDescription(
             AnyLaunchDescriptionSource(launch_file),
-            launch_arguments=adapt_type(launch_arguments, LAUNCH_ARGS)))
+            launch_arguments=adapt_type(launch_arguments, LAUNCH_ARGS))
+
+        if self.scope_included_files:
+            # run included launch in a group to avoid polluting my scope
+            from launch.actions import GroupAction
+            return self.add_action(GroupAction([inclusion]))
+        # just use default include behavior
+        return self.add_action(inclusion)
 
     def call_service(self, server, request = None, verbosity = '', **kwargs):
         '''
@@ -444,8 +462,7 @@ class SimpleLauncher:
         return SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'")
 
     def robot_state_publisher(self, package=None, description_file=None, description_dir=None,
-                              xacro_args=None, prefix_gz_plugins=False,
-                              namespaced_tf = False, **node_args):
+                              xacro_args=None, **node_args):
         '''
         Add a robot state publisher node to the launch tree using the given description (urdf / xacro) file.
 
@@ -453,38 +470,17 @@ class SimpleLauncher:
         * description_file -- is the name of the urdf/xacro file
         * description_dir -- the name of the directory containing the file (None to have it found)
         * xacro_args -- arguments passed to xacro (will force use of xacro)
-        * prefix_gz_plugins -- will forward any frame_prefix to frame names published by Gazebo plugins
-        * namespaced_tf -- equivalent to remapping /tf and /tf_static to local namespace
-        * node_args -- any additional node arguments such as remappings
+        * node_args -- any additional node arguments such as remappings or parameters
         '''
 
         urdf_xml = self.robot_description(package, description_file, description_dir, xacro_args)
 
-        frame_prefix = ""
         if 'parameters' in node_args:
+            # already some parameters, change to list of dictionaries
             node_args['parameters'] = adapt_type(node_args['parameters'], NODE_PARAMS)
-            if 'frame_prefix' in node_args['parameters'][0]:
-                frame_prefix = node_args['parameters'][0]['frame_prefix']
+            + [{'robot_description': urdf_xml}]
         else:
-            node_args['parameters'] = []
-        frame_prefix = SimpleSubstitution("'", frame_prefix, "'")
-
-        if prefix_gz_plugins:
-            urdf_xml = Command(SimpleSubstitution(['ros2 run simple_launch frame_prefix_gazebo',
-                                                         ' -d ', urdf_xml,
-                                                         ' --frame_prefix ', frame_prefix]))
-
-        node_args['parameters'] += [{'robot_description': urdf_xml}]
-
-        if namespaced_tf:
-            remaps = {'/tf':'tf', '/tf_static':'tf_static'}
-            if 'remappings' in node_args:
-                if type(node_args['remappings']) == dict:
-                    node_args['remappings'].update(remaps)
-                else:
-                    node_args['remappings'] += [remaps]
-            else:
-                node_args['remappings'] = remaps
+            node_args['parameters'] = [{'robot_description': urdf_xml}]
 
         # Launch the robot state publisher with the desired URDF
         self.node("robot_state_publisher", **node_args)
@@ -526,16 +522,22 @@ class SimpleLauncher:
         args = flatten([['-'+tag, self.arg(axis)] for axis,tag in axes.items() if axis in self.gz_axes])
         return [stringify(arg) for arg in args]
 
-    def create_gz_bridge(self, bridges: List[GazeboBridge], name = 'gz_bridge'):
+    def create_gz_bridge(self, bridges: Union[GazeboBridge,List[Union[GazeboBridge,Tuple]]], name = 'gz_bridge'):
         '''
         Create a ros_gz_bridge::parameter_bridge with the passed GazeboBridge instances
         The bridge has a default name if not specified
         If any bridge is used for sensor_msgs/Image, ros_{gz,ign}_image will be used instead
         '''
-        if type(bridges) not in (list, tuple):
+        # adapt types
+        if isinstance(bridges, GazeboBridge):
             bridges = [bridges]
         if len(bridges) == 0:
             return
+
+        # lazy list of bridges
+        for idx,bridge in enumerate(bridges):
+            if not isinstance(bridge, GazeboBridge):
+                bridges[idx] = GazeboBridge(*bridge)
 
         ros_gz = 'ros_' + ros_gz_prefix()
 
