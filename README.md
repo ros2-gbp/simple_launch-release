@@ -1,3 +1,26 @@
+## simple_launch (rolling) - 1.10.1-1
+
+The packages in the `simple_launch` repository were released into the `rolling` distro by running `/usr/bin/bloom-release --ros-distro rolling --track rolling simple_launch` on `Fri, 05 Jul 2024 16:08:03 -0000`
+
+The `simple_launch` package was released.
+
+Version of package(s) in repository `simple_launch`:
+
+- upstream repository: https://github.com/oKermorgant/simple_launch.git
+- release repository: https://github.com/ros2-gbp/simple_launch-release.git
+- rosdistro version: `1.9.1-2`
+- old version: `1.9.1-2`
+- new version: `1.10.1-1`
+
+Versions of tools used:
+
+- bloom version: `0.12.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.24.0`
+- rosdistro version: `0.9.1`
+- vcstools version: `0.1.42`
+
+
 ## simple_launch (jazzy) - 1.10.1-1
 
 The packages in the `simple_launch` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release --ros-distro jazzy --track jazzy simple_launch` on `Fri, 05 Jul 2024 16:04:54 -0000`
