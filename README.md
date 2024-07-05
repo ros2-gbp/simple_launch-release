@@ -11,12 +11,13 @@ The entry point is the `SimpleLauncher` class, which has several capabilities.
 
 ### Namespace and argument parser initialization
 
-`sl = SimpleLauncher(namespace = '', use_sim_time = None)`
+`sl = SimpleLauncher(namespace = '', use_sim_time = None, scope_included_files = False)`
 
 - will initialize all nodes relative to the given namespace
 - if `use_sim_time` is a Boolean, creates a `use_sim_time` launch argument with this value as the default and forwards it to all nodes, unless explicitely specified when running the node
 - if `use_sim_time` is `'auto'`, then `SimpleLauncher` will set it to `True` if the `/clock` topic is advertized (case of an already running simulation). **This may have side effects if the `/clock` topic is advertized but you want to use this launch file with system clock**.
 - if `use_sim_time` is `None` (default) then no particular value is forwarded to the nodes
+- if `scope_included_files` is `False` (default) then including another launch file that shares the same argument but while passing another value for this argument, will also [modify the value of this argument after the inclusion](https://robotics.stackexchange.com/questions/98997/ros2-foxy-python-launch-argument-scope-when-nesting-launch-files). This is the default behavior of `launch` but can be undesired. Inside an `OpaqueFunction` the behavior is to be scoped anyway (the argument value is resolved) and `scope_included_files` has no effect.
 
 ### Node registration
 
@@ -265,13 +266,12 @@ If `file_name` is `None` then the function just returns the path to the package 
 
 It is quite common to run a `robot_state_publisher` from a `urdf` or `xacro` file. The line below runs it at the current namespace / condition level:
 
-`sl.robot_state_publisher(package, description_file, description_dir=None, xacro_args=None, prefix_gz_plugins=False, **node_args)` where
+`sl.robot_state_publisher(package, description_file, description_dir=None, xacro_args=None, **node_args)` where
 
 - `description_file` is a URDF or xacro file
 - `description_dir` is the sub-directory of the file. If omitted, let the script search for the file assuming it is a raw string
 - `xacro_args` is a dictionary of arguments to forward to xacro
-- `prefix_gz_plugins` is used only if a `frame_prefix` parameter is given to `robot_state_publisher`. In this case it will forward the frame prefix to Gazebo-published messages that include frame names
-- `node_args` are any additional arguments for `robot_state_publisher` (typically remapping)
+- `node_args` are any additional arguments for `robot_state_publisher` (remappings / parameters)
 
 ### Python expressions
 
@@ -320,10 +320,12 @@ An effort was made to be robust to Ignition versus Gazebo uses, i.e. *ign* prefi
 
 The Gazebo launch file corresponding to the current ROS 2 distribution is launched with
 ```
-sl.gz_launch(gz_arguments)
+sl.gz_launch(world_file, gz_arguments)
 ```
 Namely, it will redirect to either `ros_ign_gazebo/ign_gazebo.launch.py` (`foxy`, `galactic`) or `ros_gz_sim/gz_sim.launch.py` (`humble`+).
 The given `gz_arguments`, if any, will be forwarded either as the `ign_args` or `gz_args`, accordingly.
+
+If the world file can be parsed then `SimpleLaunch` will detect its name and forward it to `GazeboBridge` functions.
 
 ### Spawn a model
 
@@ -345,16 +347,16 @@ Calling `sl.declare_gazebo_axes()` will declare all 6 parameters `(x,y,z,roll,pi
 If any axis is given (e.g. `sl.declare_gazebo_axes(yaw = 3.14)` then only this parameter will be declared.
 
 Such parameters can be retrieved through `sl.gazebo_axes_args()`. As a consequence, it is easy to spawn a model with:
+
 ```
 sl.declare_gazebo_axes()
-
 sl.robot_description(...)
 sl.spawn_gz_model(name, spawn_args = sl.gazebo_axes_args())
 ```
 
 ### Gazebo bridge
 
-The `GazeboBridge` class allows easily creating bridges when using Gazebo. Gazebo has to be already running in order to get information on the simulation scene.
+The `GazeboBridge` class allows easily creating bridges when using Gazebo.
 
 An instance is created with: `bridge = GazeboBridge(<gazebo_topic>, <ros_topic>, <ros_message>, direction, <gz_message> = None)` where `direction` is either:
 
@@ -364,23 +366,50 @@ An instance is created with: `bridge = GazeboBridge(<gazebo_topic>, <ros_topic>,
 
 The Gazebo message type is [deduced from the ROS message type](https://github.com/gazebosim/ros_gz/tree/ros2/ros_gz_bridge) if not set. Remapping will be set to the given `ros_topic`.
 
-The SimpleLauncher instance can then run all created bridges with: `sl.create_gz_bridge([bridges], <node_name>)`, as illustrated in the examples at this end of this document.
+The SimpleLauncher instance can then run a node dealing with declared bridges, as illustrated in the examples at this end of this document.
+
+- ```sl.create_gz_bridge([bridges], <node_name>)```
+
 If some bridges involve `sensor_msgs/Image` then a dedicated `ros_gz_image` bridge will be used. The corresponding `camera_info` topic will be also bridged.
+
+
+
+### Interaction with Gazebo sim
+
+Some bridges (e.g. `joint_states`) need to have information on the world name. This name can only be obtained while Gazebo is running, or by having a priori knowledge of the world file.
+
+The `GazeboBridge` class has a few static methods to get information on the simulated world, namely:
+
+- `GazeboBridge.world()` returns the current world name
+- `GazeboBridge.set_world_name(world)` imposes the world name
+- `GazeboBridge.model_prefix(model)` builds the Gazebo topic relative to the given model `/world/<world>/model/<model>`
+
+They can be used under these conditions:
+
+- `sl.gz_launch` was called first (in the same launch setup) and the world file could be parsed, in this case the world name from the file is used
+- or `GazeboBridge.set_world_name(world)` was called first (in the same launch setup), in this case this world name is used
+- if none of the above and a **running Gazebo** instance exists, in this case `GazeboBridge` will request information on the world
+
+If none of these conditions hold, the launch file will not be able to get information on the world, and launch fill probably fail.
+
+### Built-in bridges
 
 A common instance of the bridge is the clock. This one can be:
 
 - created with `GazeboBridge.clock()`: returns a `GazeboBridge` instance, not added to any node yet
-- or run directly with `sl.create_gz_clock_bridge()` (actually runs `sl.create_gz_bridge([GazeboBridge.clock()])`)
+- or run directly with `sl.create_gz_clock_bridge()` (actually runs `sl.create_gz_bridge(GazeboBridge.clock())`)
 
-### Interaction with Gazebo sim
+Another common but tedious bridge instance is the joint state topic of a given model. This topic includes, in Gazebo, the name of the world *and* of the model. Assuming the world name is known, the corresponding bridge can be created with:
 
-The `GazeboBridge` class has a few static methods to interact with a **running Gazebo**. Namely:
+- `GazeboBridge.joint_states_bridge(model)`
+- actually runs `GazeboBridge('/world/<world>/model/<model>/joint_state', 'joint_states', 'sensor_msgs/JointState', GazeboBridge.gz2ros)`
 
-- `GazeboBridge.world()` returns the current world name
-- `GazeboBridge.model_prefix(model)` builds the Gazebo topic relative to the given model `/world/<world>/model/<model>`
-- `GazeboBridge.has_model(model)` returns `True` of `False` depending on the passed model existing in Gazebo already
+### World TF publisher
 
-These methods request information on Gazebo at launch time. If no instance is found, the launch file will fail.
+If `/tf` is used with Gazebo, then the root frame used by Gazebo depends on the world name. This frame is usually `world` on the ROS side.
+A trivial `static_transform_publisher` is run to connect these two frames if they have different names:
+
+- `sl.gz_world_tf(world_frame = None)`: run a `static_transform_publisher` from `world` to `world_frame`. If `None` then detect the one currently used by Gazebo.
 
 ## Examples
 
@@ -511,7 +540,7 @@ generate_launch_description = sl.launch_description(opaque_function = launch_set
 
 ### Combining conditions
 
-The file below shows how to use `sl.py_eval` to combine conditions. We have to build a valid Python expression, not forgetting the spaces around `and`/`or`.
+The file below shows how to use `sl.py_eval` to combine conditions. We have to build a valid Python expression, not forgetting the spaces around `and`, `or`, `not`, etc.
 
 ```
 from simple_launch import SimpleLauncher
@@ -576,7 +605,7 @@ def generate_launch_description():
     sl = SimpleLauncher(use_sim_time=True)
 
     # run Gazebo + clock bridge
-    sl.gz_launch(f'-r {<path/to/some/sdf/world>}')
+    sl.gz_launch(<path/to/some/sdf/world>, '-r')
     sl.create_gz_clock_bridge()
 
     # run other nodes with sim time
@@ -609,7 +638,6 @@ def generate_launch_description():
             # only execute this group if use_sim_time was set to True
 
             # spawn in Gazebo at default pose if not already here
-            # uses GazeboBridge.has_model(robot) under the hood and calls ros_gz_sim::create
             sl.spawn_gz_model(robot)
 
             # create a bridge for joint states @ /world/<world>/model/<robot>/joint_state
@@ -630,6 +658,17 @@ def generate_launch_description():
     return sl.launch_description()
 
 ```
+
+### Full Gazebo simulation
+
+The file `example/gazebo/gazebo_launch.py` runs a basic simulation of a turret robot with a camera, also displayed in RViz.
+
+```
+ros2 launch simple_launch gazebo_launch.py
+```
+
+You can move the robot around with a joint velocity setpoint (`std_msgs/Float64`) on `/turret/joint#` and see the simulated camera on `/turret/image`.
+
 
 ## I want more examples
 
