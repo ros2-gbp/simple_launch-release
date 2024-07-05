@@ -1,3 +1,26 @@
+## simple_launch (iron) - 1.10.1-1
+
+The packages in the `simple_launch` repository were released into the `iron` distro by running `/usr/bin/bloom-release --ros-distro iron --track iron simple_launch` on `Fri, 05 Jul 2024 16:01:23 -0000`
+
+The `simple_launch` package was released.
+
+Version of package(s) in repository `simple_launch`:
+
+- upstream repository: https://github.com/oKermorgant/simple_launch.git
+- release repository: https://github.com/ros2-gbp/simple_launch-release.git
+- rosdistro version: `1.10.0-1`
+- old version: `1.10.0-1`
+- new version: `1.10.1-1`
+
+Versions of tools used:
+
+- bloom version: `0.12.0`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.24.0`
+- rosdistro version: `0.9.1`
+- vcstools version: `0.1.42`
+
+
 ## simple_launch (humble) - 1.10.1-1
 
 The packages in the `simple_launch` repository were released into the `humble` distro by running `/usr/bin/bloom-release --ros-distro humble --track humble simple_launch` on `Fri, 05 Jul 2024 15:50:45 -0000`
