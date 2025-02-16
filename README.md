@@ -320,12 +320,14 @@ An effort was made to be robust to Ignition versus Gazebo uses, i.e. *ign* prefi
 
 The Gazebo launch file corresponding to the current ROS 2 distribution is launched with
 ```
-sl.gz_launch(world_file, gz_arguments)
+sl.gz_launch(world_file, gz_arguments, full_world = None, save_after = 5.)
 ```
 Namely, it will redirect to either `ros_ign_gazebo/ign_gazebo.launch.py` (`foxy`, `galactic`) or `ros_gz_sim/gz_sim.launch.py` (`humble`+).
 The given `gz_arguments`, if any, will be forwarded either as the `ign_args` or `gz_args`, accordingly.
 
 If the world file can be parsed then `SimpleLaunch` will detect its name and forward it to `GazeboBridge` functions.
+
+If `full_world` is a raw string then the world will be saved into this file after the delay. This will include any URDF that was spawned in between.
 
 ### Spawn a model
 
@@ -353,6 +355,20 @@ sl.declare_gazebo_axes()
 sl.robot_description(...)
 sl.spawn_gz_model(name, spawn_args = sl.gazebo_axes_args())
 ```
+
+### Save current world
+
+If the simulation is reset after some models have been spawned, they will disappear. A convenient way to avoid this is to generate the full SDF world from a running simulation. The Gazebo GUI is able to export the current world but cannot resolve models that were spawned from e.g. a `robot_description` topic.
+
+The script `generate_gz_world` will generate a SDF corresponding to the current simulation. If some models have been spawned from URDF and topics, the script will get the corresponding description and insert it into the SDF, assuming robot `name` has its description under `/name/robot_description`. It can also be called from a launch file with (see Gazebo example):
+
+```
+# you might want to add a delay to be sure all models have been spawned
+sl.save_gz_world(full_world.sdf, after = 1.)
+```
+
+Such a self-contained SDF world file is then compatible with a reset of the simulation. See Gazebo example for launch file that checks if the full world is available.
+
 
 ### Gazebo bridge
 
