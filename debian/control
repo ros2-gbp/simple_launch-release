@@ -1,0 +1,12 @@
+Source: ros-kilted-simple-launch
+Section: misc
+Priority: optional
+Maintainer: Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>
+Build-Depends: debhelper (>= 9.0.0), ros-kilted-ament-cmake-python, ros-kilted-ament-index-python, ros-kilted-launch, ros-kilted-launch-ros, ros-kilted-xacro, ros-kilted-ros-workspace
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-kilted-simple-launch
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-kilted-ament-index-python, ros-kilted-launch, ros-kilted-launch-ros, ros-kilted-xacro, ros-kilted-ros-workspace
+Description: Python helper class for the ROS 2 launch system
