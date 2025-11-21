@@ -2,6 +2,12 @@
 Changelog for package simple_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.1 (2025-11-21)
+-------------------
+* update Readme about XML launch files
+* typo in gz_generate_world
+* Contributors: Olivier Kermorgant
+
 1.11.0 (2025-02-16)
 -------------------
 * handle gz world export to SDF after some delay
