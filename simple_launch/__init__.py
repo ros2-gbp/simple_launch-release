@@ -210,9 +210,9 @@ class SimpleLauncher:
             pass
         return performed
 
-    def as_str(self, substitution):
+    def as_raw_type(self, substitution):
         '''
-        Explicitely request the substitution to be returned as raw string.
+        Explicitely request the substitution to be returned as raw type.
         Only valid inside an OpaqueFunction, will raise otherwise.
         '''
 
@@ -470,7 +470,10 @@ class SimpleLauncher:
         cmd = SimpleSubstitution('xacro ', description_file)
         if xacro_args is not None:
             cmd += adapt_type(xacro_args, XACRO_ARGS)
-        return self.__try_perform(SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'"))
+        if self.__has_context():
+            return self.__try_perform(SimpleSubstitution(Command(cmd,on_stderr='warn')))
+
+        return SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'")
 
     def robot_state_publisher(self, package=None, description_file=None, description_dir=None,
                               xacro_args=None, **node_args):
