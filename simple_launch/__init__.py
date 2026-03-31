@@ -210,6 +210,17 @@ class SimpleLauncher:
             pass
         return performed
 
+    def as_raw_type(self, substitution):
+        '''
+        Explicitely request the substitution to be returned as raw type.
+        Only valid inside an OpaqueFunction, will raise otherwise.
+        '''
+
+        if isinstance(substitution, Text) or self.__has_context():
+            return self.__try_perform(substitution)
+        raise(TypeError('Cannot convert substitution to text without a context. Use this function from an OpaqueFunction'))
+
+
     def py_eval(self, *elems):
         '''
         Evaluates the Python expression
@@ -459,6 +470,9 @@ class SimpleLauncher:
         cmd = SimpleSubstitution('xacro ', description_file)
         if xacro_args is not None:
             cmd += adapt_type(xacro_args, XACRO_ARGS)
+        if self.__has_context():
+            return self.__try_perform(SimpleSubstitution(Command(cmd,on_stderr='warn')))
+
         return SimpleSubstitution("'", Command(cmd,on_stderr='warn'), "'")
 
     def robot_state_publisher(self, package=None, description_file=None, description_dir=None,
@@ -575,7 +589,7 @@ class SimpleLauncher:
             # use remapping to ROS topics
             remappings = []
             for bridge in im_bridges:
-                for ext in ('', '/compressed', '/compressedDepth', '/theora'):
+                for ext in ('', '/compressed', '/compressedDepth', '/theora', '/zstd'):
                     remappings.append((SimpleSubstitution(bridge.gz_topic,ext), SimpleSubstitution(bridge.ros_topic,ext)))
 
             self.node(f'{ros_gz}_image', 'image_bridge', name=SimpleSubstitution(name, '_image'),
