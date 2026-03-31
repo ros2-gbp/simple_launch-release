@@ -63,11 +63,12 @@ def gz_launch_setup(world_file, gz_args = None):
             gz_launched_worlds.append(valid_file)
             line = silent_exec(f"grep 'world name' {valid_file}")
             # line =  <world name="some_world">\n'
-            world = line.split('"')[1]
+            sep = max(['"',"'"], key = lambda c: line.count(c))
+            world = line.split(sep)[1]
             if world:
                 msg = f'Gazebo world "{world}" found @ {valid_file}'
                 console_msg = console.info
-                GazeboBridge.set_world_name(line.split('"')[1])
+                GazeboBridge.set_world_name(world)
             else:
                 msg = f'Could not get the name of Gazebo world {valid_file}'
         else:
@@ -303,9 +304,15 @@ class GazeboBridge:
 
     @staticmethod
     def clock():
+        '''
+        Classical GZ -> ROS bridge for clock topic
+        '''
         return GazeboBridge('/clock', '/clock', 'rosgraph_msgs/msg/Clock', GazeboBridge.gz2ros)
 
     @staticmethod
     def joint_states_bridge(model):
+        '''
+        Classical GZ -> ROS bridge for joint states of a given model
+        '''
         js_gz_topic = f'/world/{GazeboBridge.world()}/model/' + model + '/joint_state'
         return GazeboBridge(js_gz_topic, 'joint_states', 'sensor_msgs/JointState', GazeboBridge.gz2ros)
