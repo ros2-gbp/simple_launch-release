@@ -7,7 +7,26 @@ The motivation behind this package is that the ROS 2 launch Python syntax may no
 
 The entry point is the `SimpleLauncher` class, which has several capabilities.
 
-**Note** as of ROS 2 Humble the XML launch syntax is almost feature-equal to Python. For simple cases it might be enough, and `simple_launch` can be used for more advanced Python usage.
+**Note** as of ROS 2 Humble the XML launch syntax is almost feature-equal to Python. For simple cases it might be enough, and `simple_launch` can be used for more advanced usage (notably Gazebo interaction).
+
+#### ROS Packages
+
+ <table>
+    <tbody>
+        <tr>
+            <td>Humble</td>
+            <td><a href="http://build.ros2.org/job/Hbin_uJ64__simple_launch__ubuntu_jammy_amd64__binary/"><img src="http://build.ros2.org/buildStatus/icon?job=Hbin_uJ64__simple_launch__ubuntu_jammy_amd64__binary" alt="Build Status"/></td>
+        </tr>
+        <tr>
+            <td>Jazzy</td>
+            <td><a href="http://build.ros2.org/job/Jbin_uN64__simple_launch__ubuntu_noble_amd64__binary/"><img src="http://build.ros2.org/buildStatus/icon?job=Jbin_uN64__simple_launch__ubuntu_noble_amd64__binary" alt="Build Status"/></td>
+        </tr>
+        <tr>
+            <td>Rolling</td>
+            <td><a href="http://build.ros2.org/job/Rbin_uN64__simple_launch__ubuntu_noble_amd64__binary/"><img src="http://build.ros2.org/buildStatus/icon?job=Rbin_uN64__simple_launch__ubuntu_noble_amd64__binary" alt="Build Status"/></td>
+        </tr>
+    </tbody>
+</table>
 
 ## Basic syntax
 
@@ -103,14 +122,14 @@ Actions that are added in a scope inherit from all previous defined groups.
 
 ### By namespace
 
-```
+```Python
   with sl.group(ns=sub_namespace):
     sl.node(package, executable)
 ```
 
 ### From a condition
 
-```
+```Python
   with sl.group(if_condition=True):
     sl.node(package, executable)
 
@@ -123,7 +142,7 @@ Actions that are added in a scope inherit from all previous defined groups.
 
 ### From conditional arguments
 
-```
+```Python
   with sl.group(if_arg='use_gui'):
     sl.node(package, executable)
 
@@ -133,7 +152,7 @@ Actions that are added in a scope inherit from all previous defined groups.
 
 `if_arg` / `unless_arg` is expected to be the name of a launch argument. These two lines are equivalent:
 
-```
+```Python
   with sl.group(if_arg='use_gui'):
   with sl.group(if_condition=sl.arg('use_gui')):
 ```
@@ -172,14 +191,14 @@ from simple_launch.events import When, OnProcessStart, OnProcessExit, OnProcessI
 
 This syntax adds the `composition/composition::Talker` as a ComposableNode
 
-```
+```Python
   with sl.container(name='my_container', output='screen'):
     sl.node(package='composition', plugin='Talker', name='talker')
 ```
 
 Use the `executable` and `package` parameters if you want to use executors other than `rclcpp_components`'s `component_container`:
 
-```
+```Python
   with sl.container(name='my_container', output='screen', executable='component_container_isolated'):
 ```
 
@@ -213,7 +232,7 @@ Compare [`example_launch.py`](example/example_launch.py) and [`example_opaque_la
 
 Note that inside an `OpaqueFunction` the if/unless idiom reduces to a basic if/else:
 
-```
+```Python
 # with substitutions
 with sl.group(if_arg='some_condition'):
   # do stuff
@@ -243,13 +262,22 @@ The following syntax builds the `SimpleSubstitution` corresponding to `<robot ar
 
 The following syntax builds the `SimpleSubstitution` corresponding to `<package_path>/urdf/<robot arg>.xacro`:
 
-```
+```Python
 file_name = sl.arg('robot') + '.xacro'
 urdf_file = os.path.join(get_package_share_directory(package),'urdf')/file_name
 ```
 Obviously if all the path elements are raw strings, you should use `os.path.join` all along.
 
 *deprecated*: `sl.path_join(get_package_share_directory(package), sl.arg('robot'), '.xacro')`
+
+### Force evaluation of a `Substitution`
+
+When inside an OpaqueFunction, some functions might still return a `Substitution`. They can be forced to be performed with the following syntax:
+
+```Python
+cmd = Command('ros2 topic list'.split())  # returns a Substitution
+sl.as_raw_type(cmd)  # evaluates the Substitution as a string, if inside an OpaqueFunction
+```
 
 
 ### Find a share file
@@ -279,7 +307,7 @@ It is quite common to run a `robot_state_publisher` from a `urdf` or `xacro` fil
 
 `sl.py_eval` will evaluate the given arguments as a Python expression, possibly performed if in an Opaque Function.
 
-```
+```Python
 # RGB color as a list of [0-255] integers
 sl.declare_arg('color', [255,0,0])
 # same color as a string of [0-1] numbers (URDF format), note the padding commas to get a string
@@ -314,7 +342,7 @@ If any unavailable functionality is needed, the `sl.add_action(action)` function
 
 ## Interaction with Gazebo / Ignition
 
-*Note: Ignition being renamed to Gazebo, all tools in this section use Gazebo / gz names*
+*Note: all tools in this section use Gazebo / gz names*
 
 An effort was made to be robust to Ignition versus Gazebo uses, i.e. *ign* prefix is used for `foxy` and `galactic` while *gz* prefix is used from `humble`. `GZ_VERSION` and `IGNITION_VERSION` environment variables are also used to identify which version should be preferred.
 
@@ -441,7 +469,7 @@ Here is a file spawning a `robot_state_publisher` and its `joint_state_publisher
 - `prefix`, `x` and `y` are launch arguments that are passed to xacro
 - `use_gui` tells whether `joint_state_publisher` should run the gui
 
-```
+```Python
 from simple_launch import SimpleLauncher
 
 def generate_launch_description():
@@ -469,7 +497,7 @@ def generate_launch_description():
 
 The file below fires up either `robot1` or `robot2` (or both) and also has a boolean argument to spawn `RViz2`:
 
-```
+```Python
 from simple_launch import SimpleLauncher
 
 def generate_launch_description():
@@ -508,7 +536,7 @@ def generate_launch_description():
 
 The file below does the same as the previous one, but using an `OpaqueFunction`:
 
-```
+```Python
 from simple_launch import SimpleLauncher
 
 # declare simple launcher and the launch arguments in the main body
@@ -560,7 +588,7 @@ generate_launch_description = sl.launch_description(opaque_function = launch_set
 
 The file below shows how to use `sl.py_eval` to combine conditions. We have to build a valid Python expression, not forgetting the spaces around `and`, `or`, `not`, etc.
 
-```
+```Python
 from simple_launch import SimpleLauncher
 
 def generate_launch_description():
@@ -590,7 +618,7 @@ def generate_launch_description():
 
 The file below is another way to write the [composition launch example](https://index.ros.org/doc/ros2/Tutorials/Composition/#composition-using-launch-actions):
 
-```
+```Python
 from simple_launch import SimpleLauncher
 
 def generate_launch_description():
@@ -614,7 +642,7 @@ This [example file](example/event_tutorial_launch.py) is another way to write th
 Here we run Gazebo and force all other nodes to `use_sim_time:=True`, unless this file is included from another one with `use_sim_time:=False`.
 This is unlikely as this launch file spawns a simulator.
 
-```
+```Python
 from simple_launch import SimpleLauncher, GazeboBridge
 
 def generate_launch_description():
@@ -637,7 +665,7 @@ def generate_launch_description():
 The file below only runs by default a `robot_state_publisher` with `use_sim_time:=False`.
 However, if it is included from another file with `use_sim_time:=True` then it also spawns the robot into Gazebo and runs two bridges for joint states and pose.
 
-```
+```Python
 from simple_launch import SimpleLauncher, GazeboBridge
 
 def generate_launch_description():
@@ -681,7 +709,7 @@ def generate_launch_description():
 
 The file `example/gazebo/gazebo_launch.py` runs a basic simulation of a turret robot with a camera, also displayed in RViz.
 
-```
+```bash
 ros2 launch simple_launch gazebo_launch.py
 ```
 
