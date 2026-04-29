@@ -1,0 +1,12 @@
+Source: ros-lyrical-simple-launch
+Section: misc
+Priority: optional
+Maintainer: Olivier Kermorgant <olivier.kermorgant@ec-nantes.fr>
+Build-Depends: debhelper (>= 9.0.0), ros-lyrical-ament-cmake-python, ros-lyrical-ament-index-python, ros-lyrical-launch, ros-lyrical-launch-ros, ros-lyrical-xacro, ros-lyrical-ros-workspace
+Homepage: https://index.ros.org/p/simple_launch/#lyrical
+Standards-Version: 3.9.2
+
+Package: ros-lyrical-simple-launch
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-lyrical-ament-index-python, ros-lyrical-launch, ros-lyrical-launch-ros, ros-lyrical-xacro, ros-lyrical-ros-workspace
+Description: Python helper class for the ROS 2 launch system
