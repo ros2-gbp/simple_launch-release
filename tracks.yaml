@@ -183,4 +183,5 @@ tracks:
     ros_distro: rolling
     vcs_type: git
     vcs_uri: https://github.com/oKermorgant/simple_launch.git
-    version: :{auto}
+    version: 1.11.4
+    version_saved: :{auto}
